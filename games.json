@@ -19,6 +19,16 @@
       "type": "Simulation",
       "controls": "Mouse or touch",
       "status": "available"
+    },
+    {
+      "id": "slime",
+      "name": "Slime",
+      "file": "slime.html",
+      "description": "Interact with smooth, flowing slime that deforms and reacts to movement.",
+      "category": "Satisfying",
+      "type": "Simulation",
+      "controls": "Mouse or touch",
+      "status": "available"
     }
   ]
 }
