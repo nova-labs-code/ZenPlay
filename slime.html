@@ -35,13 +35,13 @@
         canvas {
             position: fixed;
             inset: 0;
-            display: block;
             width: 100vw;
             height: 100vh;
+            display: block;
             touch-action: none;
         }
 
-        #slimeOverlay {
+        #slimeTexture {
             position: fixed;
             inset: 0;
             width: 100vw;
@@ -50,6 +50,13 @@
             opacity: 0.6;
             pointer-events: none;
             z-index: 2;
+
+            /*
+                The image itself is distorted through
+                CSS transforms generated from the slime
+                movement.
+            */
+            transform-origin: center;
         }
     </style>
 </head>
@@ -59,7 +66,7 @@
 <canvas id="canvas"></canvas>
 
 <img
-    id="slimeOverlay"
+    id="slimeTexture"
     src="Slime.png"
     alt=""
 >
@@ -70,7 +77,19 @@ const ctx = canvas.getContext("2d", {
     alpha: false
 });
 
+const slimeTexture =
+    document.getElementById("slimeTexture");
+
 const CELL_SIZE = 6;
+
+/*
+    Interaction radius.
+
+    10 simulation cells × 6px
+    = roughly 60px around
+    the finger.
+*/
+const RADIUS = 10;
 
 let W = 0;
 let H = 0;
@@ -97,6 +116,11 @@ const pointer = {
     down: false
 };
 
+
+/* =========================
+   RESIZE
+========================= */
+
 function resize() {
     W = window.innerWidth;
     H = window.innerHeight;
@@ -104,23 +128,30 @@ function resize() {
     canvas.width = W;
     canvas.height = H;
 
-    gridW = Math.ceil(W / CELL_SIZE) + 1;
-    gridH = Math.ceil(H / CELL_SIZE) + 1;
+    gridW =
+        Math.ceil(W / CELL_SIZE) + 1;
 
-    depth = new Float32Array(
-        gridW * gridH
-    );
+    gridH =
+        Math.ceil(H / CELL_SIZE) + 1;
 
-    nextDepth = new Float32Array(
-        gridW * gridH
-    );
+    depth =
+        new Float32Array(
+            gridW * gridH
+        );
 
-    imageData = ctx.createImageData(
-        W,
-        H
-    );
+    nextDepth =
+        new Float32Array(
+            gridW * gridH
+        );
 
-    pixels = imageData.data;
+    imageData =
+        ctx.createImageData(
+            W,
+            H
+        );
+
+    pixels =
+        imageData.data;
 }
 
 resize();
@@ -129,6 +160,11 @@ window.addEventListener(
     "resize",
     resize
 );
+
+
+/* =========================
+   POINTER
+========================= */
 
 canvas.addEventListener(
     "pointerdown",
@@ -160,10 +196,12 @@ canvas.addEventListener(
         pointer.y = e.clientY;
 
         pointer.velocityX =
-            pointer.x - pointer.oldX;
+            pointer.x -
+            pointer.oldX;
 
         pointer.velocityY =
-            pointer.y - pointer.oldY;
+            pointer.y -
+            pointer.oldY;
     }
 );
 
@@ -181,25 +219,35 @@ canvas.addEventListener(
     }
 );
 
+
+/* =========================
+   HELPERS
+========================= */
+
 function index(x, y) {
     return x + y * gridW;
 }
 
-function clamp(value, min, max) {
+function clamp(
+    value,
+    min,
+    max
+) {
     return Math.max(
         min,
         Math.min(max, value)
     );
 }
 
+
+/* =========================
+   FINGER DEFORMATION
+========================= */
+
 function disturb() {
     if (!pointer.down) {
         return;
     }
-
-    // 10 simulation cells.
-    // Each cell is 6px.
-    const radius = 10;
 
     const centerX =
         pointer.x / CELL_SIZE;
@@ -207,33 +255,50 @@ function disturb() {
     const centerY =
         pointer.y / CELL_SIZE;
 
-    const minX = Math.max(
-        1,
-        Math.floor(centerX - radius)
-    );
+    const minX =
+        Math.max(
+            1,
+            Math.floor(
+                centerX - RADIUS
+            )
+        );
 
-    const maxX = Math.min(
-        gridW - 2,
-        Math.ceil(centerX + radius)
-    );
+    const maxX =
+        Math.min(
+            gridW - 2,
+            Math.ceil(
+                centerX + RADIUS
+            )
+        );
 
-    const minY = Math.max(
-        1,
-        Math.floor(centerY - radius)
-    );
+    const minY =
+        Math.max(
+            1,
+            Math.floor(
+                centerY - RADIUS
+            )
+        );
 
-    const maxY = Math.min(
-        gridH - 2,
-        Math.ceil(centerY + radius)
-    );
+    const maxY =
+        Math.min(
+            gridH - 2,
+            Math.ceil(
+                centerY + RADIUS
+            )
+        );
 
-    const speed = Math.sqrt(
-        pointer.velocityX *
-        pointer.velocityX +
-        pointer.velocityY *
-        pointer.velocityY
-    );
+    const speed =
+        Math.sqrt(
+            pointer.velocityX *
+            pointer.velocityX +
+            pointer.velocityY *
+            pointer.velocityY
+        );
 
+    /*
+        Faster finger movement
+        creates stronger deformation.
+    */
     const pressure =
         0.9 +
         Math.min(
@@ -263,12 +328,20 @@ function disturb() {
                     dy * dy
                 );
 
-            if (distance > radius) {
+            if (
+                distance >
+                RADIUS
+            ) {
                 continue;
             }
 
+            /*
+                Smooth falloff from
+                the finger outward.
+            */
             const influence =
-                1 - distance / radius;
+                1 -
+                distance / RADIUS;
 
             const amount =
                 influence *
@@ -279,23 +352,23 @@ function disturb() {
                 index(x, y);
 
             /*
-                Push the slime downward.
-
-                The stronger deformation makes
-                the finger visibly sink into it.
+                Push the slime down.
             */
             depth[i] -=
                 amount * 2.5;
 
             /*
-                Drag the surrounding slime
-                in the direction of the finger.
+                Drag the surrounding
+                slime along with the finger.
             */
             if (speed > 0.5) {
                 const direction =
                     (
-                        dx * pointer.velocityX +
-                        dy * pointer.velocityY
+                        dx *
+                        pointer.velocityX +
+
+                        dy *
+                        pointer.velocityY
                     ) /
                     (distance + 1);
 
@@ -307,6 +380,11 @@ function disturb() {
         }
     }
 }
+
+
+/* =========================
+   DEPTH PHYSICS
+========================= */
 
 function updateDepth() {
     disturb();
@@ -334,15 +412,18 @@ function updateDepth() {
                 depth[i + 1];
 
             const up =
-                depth[i - gridW];
+                depth[
+                    i - gridW
+                ];
 
             const down =
-                depth[i + gridW];
+                depth[
+                    i + gridW
+                ];
 
             /*
-                Neighbor interaction makes
-                the deformation spread through
-                the surrounding slime.
+                Spread deformation
+                between neighboring cells.
             */
             const spread =
                 left +
@@ -355,36 +436,43 @@ function updateDepth() {
                 spread * 0.27;
 
             /*
-                Spring force.
-
-                This slowly pulls the slime
-                back toward its original shape.
+                Spring force slowly
+                restores the slime.
             */
             velocity +=
                 -center * 0.009;
 
             /*
-                Damping controls how slowly
-                the slime settles.
+                Higher damping makes
+                the deformation settle
+                slowly and smoothly.
             */
             velocity *= 0.94;
 
             nextDepth[i] =
-                center + velocity;
+                center +
+                velocity;
         }
     }
 
     /*
-        Keep the outer edge stable.
+        Keep the outer boundary
+        at its original position.
     */
     for (
         let x = 0;
         x < gridW;
         x++
     ) {
-        nextDepth[index(x, 0)] = 0;
         nextDepth[
-            index(x, gridH - 1)
+            index(x, 0)
+        ] = 0;
+
+        nextDepth[
+            index(
+                x,
+                gridH - 1
+            )
         ] = 0;
     }
 
@@ -398,17 +486,32 @@ function updateDepth() {
         ] = 0;
 
         nextDepth[
-            index(gridW - 1, y)
+            index(
+                gridW - 1,
+                y
+            )
         ] = 0;
     }
 
-    const temp = depth;
+    const temp =
+        depth;
 
-    depth = nextDepth;
-    nextDepth = temp;
+    depth =
+        nextDepth;
+
+    nextDepth =
+        temp;
 }
 
-function sampleDepth(px, py) {
+
+/* =========================
+   DEPTH SAMPLING
+========================= */
+
+function sampleDepth(
+    px,
+    py
+) {
     const gx =
         px / CELL_SIZE;
 
@@ -476,16 +579,23 @@ function sampleDepth(px, py) {
         ];
 
     const top =
-        a + (b - a) * fx;
+        a +
+        (b - a) * fx;
 
     const bottom =
-        c + (d - c) * fx;
+        c +
+        (d - c) * fx;
 
     return (
         top +
         (bottom - top) * fy
     );
 }
+
+
+/* =========================
+   SLIME RENDER
+========================= */
 
 function render() {
     const lightX =
@@ -494,7 +604,8 @@ function render() {
     const lightY =
         H * 0.18;
 
-    const lightZ = 300;
+    const lightZ =
+        300;
 
     for (
         let y = 0;
@@ -510,11 +621,14 @@ function render() {
                 y * W + x;
 
             const z =
-                sampleDepth(x, y);
+                sampleDepth(
+                    x,
+                    y
+                );
 
             /*
-                Sample the surrounding depth
-                to calculate the surface normal.
+                Calculate the surface
+                slope around this pixel.
             */
             const zLeft =
                 sampleDepth(
@@ -541,12 +655,16 @@ function render() {
                 );
 
             const slopeX =
-                (zRight - zLeft) *
-                0.5;
+                (
+                    zRight -
+                    zLeft
+                ) * 0.5;
 
             const slopeY =
-                (zDown - zUp) *
-                0.5;
+                (
+                    zDown -
+                    zUp
+                ) * 0.5;
 
             let nx =
                 -slopeX;
@@ -554,7 +672,8 @@ function render() {
             let ny =
                 -slopeY;
 
-            let nz = 3.2;
+            let nz =
+                3.2;
 
             const normalLength =
                 Math.sqrt(
@@ -563,9 +682,14 @@ function render() {
                     nz * nz
                 );
 
-            nx /= normalLength;
-            ny /= normalLength;
-            nz /= normalLength;
+            nx /=
+                normalLength;
+
+            ny /=
+                normalLength;
+
+            nz /=
+                normalLength;
 
             /*
                 Light direction.
@@ -586,9 +710,14 @@ function render() {
                     lz * lz
                 );
 
-            lx /= lightLength;
-            ly /= lightLength;
-            lz /= lightLength;
+            lx /=
+                lightLength;
+
+            ly /=
+                lightLength;
+
+            lz /=
+                lightLength;
 
             /*
                 Diffuse lighting.
@@ -602,11 +731,16 @@ function render() {
                 );
 
             /*
-                Specular highlight.
+                Soft specular highlight.
             */
-            const hx = lx;
-            const hy = ly;
-            const hz = lz + 1;
+            const hx =
+                lx;
+
+            const hy =
+                ly;
+
+            const hz =
+                lz + 1;
 
             const halfLength =
                 Math.sqrt(
@@ -640,11 +774,6 @@ function render() {
                 diffuse +
                 specular;
 
-            /*
-                Depth affects brightness,
-                giving the deformation more
-                visual depth.
-            */
             brightness +=
                 clamp(
                     z * 0.008,
@@ -662,7 +791,8 @@ function render() {
             const r =
                 clamp(
                     Math.round(
-                        10 * brightness
+                        10 *
+                        brightness
                     ),
                     0,
                     255
@@ -671,7 +801,8 @@ function render() {
             const g =
                 clamp(
                     Math.round(
-                        150 * brightness
+                        150 *
+                        brightness
                     ),
                     0,
                     255
@@ -680,7 +811,8 @@ function render() {
             const b =
                 clamp(
                     Math.round(
-                        68 * brightness
+                        68 *
+                        brightness
                     ),
                     0,
                     255
@@ -689,10 +821,17 @@ function render() {
             const p =
                 pixelIndex * 4;
 
-            pixels[p] = r;
-            pixels[p + 1] = g;
-            pixels[p + 2] = b;
-            pixels[p + 3] = 255;
+            pixels[p] =
+                r;
+
+            pixels[p + 1] =
+                g;
+
+            pixels[p + 2] =
+                b;
+
+            pixels[p + 3] =
+                255;
         }
     }
 
@@ -703,56 +842,166 @@ function render() {
     );
 }
 
-function gloss() {
-    ctx.globalCompositeOperation =
-        "screen";
 
-    const gradient =
-        ctx.createRadialGradient(
-            W * 0.28,
-            H * 0.18,
-            0,
-            W * 0.28,
-            H * 0.18,
-            Math.max(W, H) * 0.7
+/* =========================
+   DEFORM SLIME.PNG
+========================= */
+
+function deformTexture() {
+    /*
+        Calculate the overall deformation
+        around the current finger position.
+
+        This changes the texture's scale,
+        position and skew so Slime.png
+        visually follows the slime.
+    */
+
+    if (!pointer.down) {
+        /*
+            Slowly return the image
+            to its normal shape.
+        */
+        slimeTexture.style.transform =
+            "translate3d(0px, 0px, 0px) " +
+            "scale(1, 1) " +
+            "skew(0deg, 0deg)";
+
+        return;
+    }
+
+    const centerDepth =
+        sampleDepth(
+            pointer.x,
+            pointer.y
         );
 
-    gradient.addColorStop(
-        0,
-        "rgba(230,255,235,0.07)"
-    );
+    const leftDepth =
+        sampleDepth(
+            pointer.x - 30,
+            pointer.y
+        );
 
-    gradient.addColorStop(
-        0.3,
-        "rgba(180,255,205,0.025)"
-    );
+    const rightDepth =
+        sampleDepth(
+            pointer.x + 30,
+            pointer.y
+        );
 
-    gradient.addColorStop(
-        1,
-        "rgba(0,0,0,0)"
-    );
+    const upDepth =
+        sampleDepth(
+            pointer.x,
+            pointer.y - 30
+        );
 
-    ctx.fillStyle =
-        gradient;
+    const downDepth =
+        sampleDepth(
+            pointer.x,
+            pointer.y + 30
+        );
 
-    ctx.fillRect(
-        0,
-        0,
-        W,
-        H
-    );
+    /*
+        Amount of deformation.
+    */
+    const strength =
+        clamp(
+            -centerDepth * 0.012,
+            0,
+            0.18
+        );
 
-    ctx.globalCompositeOperation =
-        "source-over";
+    /*
+        Horizontal and vertical
+        surface differences.
+    */
+    const horizontal =
+        rightDepth -
+        leftDepth;
+
+    const vertical =
+        downDepth -
+        upDepth;
+
+    /*
+        Make the image compress
+        around the pressed area.
+    */
+    const scaleX =
+        1 -
+        strength * 0.12;
+
+    const scaleY =
+        1 -
+        strength * 0.18;
+
+    /*
+        Slightly follow the deformation
+        direction.
+    */
+    const skewX =
+        clamp(
+            horizontal * 0.015,
+            -4,
+            4
+        );
+
+    const skewY =
+        clamp(
+            vertical * 0.015,
+            -4,
+            4
+        );
+
+    /*
+        The image moves very slightly
+        toward the pressed surface.
+    */
+    const moveX =
+        clamp(
+            horizontal * 0.25,
+            -12,
+            12
+        );
+
+    const moveY =
+        clamp(
+            vertical * 0.25,
+            -12,
+            12
+        );
+
+    slimeTexture.style.transform =
+        "translate3d(" +
+        moveX +
+        "px, " +
+        moveY +
+        "px, 0px) " +
+        "scale(" +
+        scaleX +
+        ", " +
+        scaleY +
+        ") " +
+        "skew(" +
+        skewX +
+        "deg, " +
+        skewY +
+        "deg)";
 }
+
+
+/* =========================
+   ANIMATION
+========================= */
 
 function animate() {
     pointer.velocityX *= 0.72;
     pointer.velocityY *= 0.72;
 
     updateDepth();
+
     render();
-    gloss();
+
+    deformTexture();
 
     requestAnimationFrame(
         animate
