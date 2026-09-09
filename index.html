@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+        content="width=device-width,
+        initial-scale=1.0,
+        maximum-scale=1.0,
+        user-scalable=no,
+        viewport-fit=cover">
+
+    <title>ZenPlay</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            width: 100%;
+            min-height: 100%;
+            font-family: Arial, sans-serif;
+            background: #08090d;
+            color: white;
+        }
+
+        body {
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: auto;
+        }
+
+        h1 {
+            font-size: 3rem;
+            margin: 0 0 10px;
+        }
+
+        .subtitle {
+            color: #9da3b4;
+            font-size: 1.1rem;
+            margin-bottom: 40px;
+        }
+
+        .games {
+            display: grid;
+            grid-template-columns: repeat(
+                auto-fit,
+                minmax(240px, 1fr)
+            );
+            gap: 20px;
+        }
+
+        .game {
+            padding: 25px;
+            border-radius: 18px;
+            background: #11131a;
+            border: 1px solid #242733;
+            color: white;
+            cursor: pointer;
+            transition:
+                transform 0.2s,
+                border-color 0.2s;
+        }
+
+        .game:hover {
+            transform: translateY(-4px);
+            border-color: #4d556b;
+        }
+
+        .game h2 {
+            margin: 0 0 10px;
+        }
+
+        .game p {
+            margin: 0 0 15px;
+            color: #9da3b4;
+            line-height: 1.5;
+        }
+
+        .game-info {
+            font-size: 0.85rem;
+            color: #6f7688;
+        }
+
+        #gameOverlay {
+            position: fixed;
+            inset: 0;
+            background: #000;
+            display: none;
+            z-index: 1000;
+        }
+
+        #gameFrame {
+            width: 100%;
+            height: 100%;
+            border: none;
+            display: block;
+        }
+
+        #exitButton {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            z-index: 1001;
+
+            padding: 10px 16px;
+
+            border: none;
+            border-radius: 10px;
+
+            background: rgba(20, 20, 25, 0.85);
+            color: white;
+
+            font-size: 15px;
+            cursor: pointer;
+
+            backdrop-filter: blur(10px);
+        }
+
+        #exitButton:hover {
+            background: rgba(40, 40, 48, 0.95);
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <h1>ZenPlay</h1>
+
+    <p class="subtitle">
+        Simple, satisfying games.
+    </p>
+
+    <div class="games" id="games">
+        Loading games...
+    </div>
+
+</div>
+
+
+<div id="gameOverlay">
+
+    <button id="exitButton" onclick="closeGame()">
+        Exit
+    </button>
+
+    <iframe
+        id="gameFrame"
+        allow="fullscreen">
+    </iframe>
+
+</div>
+
+
+<script>
+const gamesContainer = document.getElementById("games");
+const gameOverlay = document.getElementById("gameOverlay");
+const gameFrame = document.getElementById("gameFrame");
+
+
+async function loadGames() {
+
+    try {
+
+        const response = await fetch("games.json");
+
+        if (!response.ok) {
+            throw new Error("Could not load games.json");
+        }
+
+        const data = await response.json();
+
+        gamesContainer.innerHTML = "";
+
+        data.games.forEach(game => {
+
+            const card = document.createElement("div");
+
+            card.className = "game";
+
+            card.onclick = () => {
+                openGame(game.file);
+            };
+
+            card.innerHTML = `
+                <h2>${game.name}</h2>
+
+                <p>
+                    ${game.description}
+                </p>
+
+                <div class="game-info">
+                    ${game.category} · ${game.type}
+                </div>
+            `;
+
+            gamesContainer.appendChild(card);
+        });
+
+    } catch (error) {
+
+        gamesContainer.innerHTML =
+            "Unable to load games.";
+
+        console.error(error);
+    }
+}
+
+
+function openGame(file) {
+
+    gameFrame.src = file;
+
+    gameOverlay.style.display = "block";
+
+    document.body.style.overflow = "hidden";
+}
+
+
+function closeGame() {
+
+    gameFrame.src = "";
+
+    gameOverlay.style.display = "none";
+
+    document.body.style.overflow = "";
+}
+
+
+loadGames();
+</script>
+
+</body>
+</html>
