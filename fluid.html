@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+        content="width=device-width,
+        initial-scale=1.0,
+        maximum-scale=1.0,
+        user-scalable=no,
+        viewport-fit=cover">
+
+    <title>Satisfying Fluid</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #05060a;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            touch-action: none;
+        }
+    </style>
+</head>
+
+<body>
+
+<canvas id="canvas"></canvas>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let W;
+let H;
+
+const SCALE = 4;
+
+let gridW;
+let gridH;
+
+let velocityX;
+let velocityY;
+
+let nextVelocityX;
+let nextVelocityY;
+
+let dye;
+let nextDye;
+
+let imageData;
+let pixels;
+
+let pointer = {
+    x: 0,
+    y: 0,
+    oldX: 0,
+    oldY: 0,
+    down: false
+};
+
+/* =========================
+   RESIZE
+========================= */
+
+function resize() {
+
+    W = window.innerWidth;
+    H = window.innerHeight;
+
+    canvas.width = W;
+    canvas.height = H;
+
+    gridW = Math.max(60, Math.floor(W / SCALE));
+    gridH = Math.max(60, Math.floor(H / SCALE));
+
+    const size = gridW * gridH;
+
+    velocityX = new Float32Array(size);
+    velocityY = new Float32Array(size);
+
+    nextVelocityX = new Float32Array(size);
+    nextVelocityY = new Float32Array(size);
+
+    dye = new Float32Array(size);
+    nextDye = new Float32Array(size);
+
+    imageData = ctx.createImageData(W, H);
+    pixels = imageData.data;
+}
+
+resize();
+
+window.addEventListener("resize", resize);
+
+/* =========================
+   HELPERS
+========================= */
+
+function index(x, y) {
+    return x + y * gridW;
+}
+
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+}
+
+/* =========================
+   INPUT
+========================= */
+
+canvas.addEventListener("pointerdown", e => {
+
+    pointer.x = e.clientX;
+    pointer.y = e.clientY;
+
+    pointer.oldX = pointer.x;
+    pointer.oldY = pointer.y;
+
+    pointer.down = true;
+
+    canvas.setPointerCapture(e.pointerId);
+});
+
+canvas.addEventListener("pointermove", e => {
+
+    pointer.oldX = pointer.x;
+    pointer.oldY = pointer.y;
+
+    pointer.x = e.clientX;
+    pointer.y = e.clientY;
+});
+
+canvas.addEventListener("pointerup", () => {
+    pointer.down = false;
+});
+
+canvas.addEventListener("pointercancel", () => {
+    pointer.down = false;
+});
+
+/* =========================
+   ADD FLUID
+========================= */
+
+function disturbFluid() {
+
+    if (!pointer.down)
+        return;
+
+    const gx = pointer.x / SCALE;
+    const gy = pointer.y / SCALE;
+
+    const oldGX = pointer.oldX / SCALE;
+    const oldGY = pointer.oldY / SCALE;
+
+    const dx = gx - oldGX;
+    const dy = gy - oldGY;
+
+    /*
+        Keep the finger influence small.
+        This prevents the fluid from
+        flying around too aggressively.
+    */
+
+    const force = 0.12;
+
+    const radius = 7;
+
+    const minX = Math.max(1, Math.floor(gx - radius));
+    const maxX = Math.min(gridW - 2, Math.ceil(gx + radius));
+
+    const minY = Math.max(1, Math.floor(gy - radius));
+    const maxY = Math.min(gridH - 2, Math.ceil(gy + radius));
+
+    for (let y = minY; y <= maxY; y++) {
+
+        for (let x = minX; x <= maxX; x++) {
+
+            const ox = x - gx;
+            const oy = y - gy;
+
+            const distance =
+                Math.sqrt(ox * ox + oy * oy);
+
+            if (distance > radius)
+                continue;
+
+            const influence =
+                1 - distance / radius;
+
+            const i = index(x, y);
+
+            /*
+                Gently inject velocity.
+            */
+
+            velocityX[i] += dx * force * influence;
+            velocityY[i] += dy * force * influence;
+
+            /*
+                Inject dye.
+            */
+
+            dye[i] += influence * 0.9;
+        }
+    }
+}
+
+/* =========================
+   VELOCITY DIFFUSION
+========================= */
+
+function diffuseVelocity() {
+
+    for (let y = 1; y < gridH - 1; y++) {
+
+        for (let x = 1; x < gridW - 1; x++) {
+
+            const i = index(x, y);
+
+            const left = index(x - 1, y);
+            const right = index(x + 1, y);
+
+            const up = index(x, y - 1);
+            const down = index(x, y + 1);
+
+            nextVelocityX[i] =
+                velocityX[i] * 0.72 +
+                (
+                    velocityX[left] +
+                    velocityX[right] +
+                    velocityX[up] +
+                    velocityX[down]
+                ) * 0.07;
+
+            nextVelocityY[i] =
+                velocityY[i] * 0.72 +
+                (
+                    velocityY[left] +
+                    velocityY[right] +
+                    velocityY[up] +
+                    velocityY[down]
+                ) * 0.07;
+        }
+    }
+
+    [velocityX, nextVelocityX] =
+        [nextVelocityX, velocityX];
+
+    [velocityY, nextVelocityY] =
+        [nextVelocityY, velocityY];
+}
+
+/* =========================
+   ADVECT VELOCITY
+========================= */
+
+function advectVelocity() {
+
+    for (let y = 1; y < gridH - 1; y++) {
+
+        for (let x = 1; x < gridW - 1; x++) {
+
+            const i = index(x, y);
+
+            let backX =
+                x - velocityX[i] * 0.8;
+
+            let backY =
+                y - velocityY[i] * 0.8;
+
+            backX = clamp(
+                backX,
+                1,
+                gridW - 2
+            );
+
+            backY = clamp(
+                backY,
+                1,
+                gridH - 2
+            );
+
+            const x0 = Math.floor(backX);
+            const y0 = Math.floor(backY);
+
+            const x1 = x0 + 1;
+            const y1 = y0 + 1;
+
+            const sx = backX - x0;
+            const sy = backY - y0;
+
+            const i00 = index(x0, y0);
+            const i10 = index(x1, y0);
+            const i01 = index(x0, y1);
+            const i11 = index(x1, y1);
+
+            nextVelocityX[i] =
+                velocityX[i00] * (1 - sx) * (1 - sy) +
+                velocityX[i10] * sx * (1 - sy) +
+                velocityX[i01] * (1 - sx) * sy +
+                velocityX[i11] * sx * sy;
+
+            nextVelocityY[i] =
+                velocityY[i00] * (1 - sx) * (1 - sy) +
+                velocityY[i10] * sx * (1 - sy) +
+                velocityY[i01] * (1 - sx) * sy +
+                velocityY[i11] * sx * sy;
+        }
+    }
+
+    [velocityX, nextVelocityX] =
+        [nextVelocityX, velocityX];
+
+    [velocityY, nextVelocityY] =
+        [nextVelocityY, velocityY];
+}
+
+/* =========================
+   ADVECT DYE
+========================= */
+
+function advectDye() {
+
+    for (let y = 1; y < gridH - 1; y++) {
+
+        for (let x = 1; x < gridW - 1; x++) {
+
+            const i = index(x, y);
+
+            let backX =
+                x - velocityX[i] * 1.5;
+
+            let backY =
+                y - velocityY[i] * 1.5;
+
+            backX = clamp(
+                backX,
+                1,
+                gridW - 2
+            );
+
+            backY = clamp(
+                backY,
+                1,
+                gridH - 2
+            );
+
+            const x0 = Math.floor(backX);
+            const y0 = Math.floor(backY);
+
+            const x1 = x0 + 1;
+            const y1 = y0 + 1;
+
+            const sx = backX - x0;
+            const sy = backY - y0;
+
+            const i00 = index(x0, y0);
+            const i10 = index(x1, y0);
+            const i01 = index(x0, y1);
+            const i11 = index(x1, y1);
+
+            nextDye[i] =
+                (
+                    dye[i00] * (1 - sx) * (1 - sy) +
+                    dye[i10] * sx * (1 - sy) +
+                    dye[i01] * (1 - sx) * sy +
+                    dye[i11] * sx * sy
+                ) * 0.994;
+        }
+    }
+
+    [dye, nextDye] =
+        [nextDye, dye];
+}
+
+/* =========================
+   AUTO SETTLE
+========================= */
+
+function relaxFluid() {
+
+    for (let i = 0; i < dye.length; i++) {
+
+        /*
+            Dye slowly disappears.
+            This is what makes the site
+            automatically return to calm.
+        */
+
+        dye[i] *= 0.992;
+
+        /*
+            Velocity loses energy.
+        */
+
+        velocityX[i] *= 0.94;
+        velocityY[i] *= 0.94;
+    }
+}
+
+/* =========================
+   RENDER
+========================= */
+
+function render() {
+
+    for (let y = 0; y < H; y++) {
+
+        const gy =
+            Math.floor(y / SCALE);
+
+        for (let x = 0; x < W; x++) {
+
+            const gx =
+                Math.floor(x / SCALE);
+
+            const i =
+                index(
+                    clamp(gx, 0, gridW - 1),
+                    clamp(gy, 0, gridH - 1)
+                );
+
+            const amount =
+                clamp(dye[i], 0, 1);
+
+            /*
+                Blue/cyan fluid.
+            */
+
+            const r =
+                amount * 40;
+
+            const g =
+                amount * 180;
+
+            const b =
+                amount * 255;
+
+            const p =
+                (x + y * W) * 4;
+
+            pixels[p] = r;
+            pixels[p + 1] = g;
+            pixels[p + 2] = b;
+
+            pixels[p + 3] =
+                255;
+        }
+    }
+
+    ctx.putImageData(
+        imageData,
+        0,
+        0
+    );
+}
+
+/* =========================
+   ANIMATION
+========================= */
+
+function animate() {
+
+    disturbFluid();
+
+    diffuseVelocity();
+
+    advectVelocity();
+
+    advectDye();
+
+    relaxFluid();
+
+    render();
+
+    requestAnimationFrame(animate);
+}
+
+animate();
+</script>
+
+</body>
+</html>
