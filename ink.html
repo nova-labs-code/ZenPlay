@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width,
+        initial-scale=1.0,
+        maximum-scale=1.0,
+        user-scalable=no,
+        viewport-fit=cover"
+    >
+
+    <title>Ink</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: #000;
+        }
+    </style>
+</head>
+
+<body>
+
+<canvas id="canvas"></canvas>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d", {
+    alpha: false
+});
+
+let width;
+let height;
+
+let simWidth = 180;
+let simHeight;
+
+let density;
+let densityNext;
+
+let velocityX;
+let velocityY;
+
+let velocityXNext;
+let velocityYNext;
+
+let pixels;
+
+const pointer = {
+    x: 0,
+    y: 0,
+    lastX: 0,
+    lastY: 0,
+    down: false,
+    pressure: 1
+};
+
+const SETTINGS = {
+    gravity: 0.022,
+
+    fade: 0.994,
+
+    velocityFade: 0.965,
+
+    diffusion: 0.16,
+
+    flow: 0.025,
+
+    brushSize: 5.5,
+
+    inkAmount: 0.38,
+
+    glowStrength: 1.0
+};
+
+function resize() {
+
+    width = window.innerWidth;
+    height = window.innerHeight;
+
+    canvas.width = width;
+    canvas.height = height;
+
+    simWidth = 180;
+
+    simHeight = Math.round(
+        simWidth * height / width
+    );
+
+    simHeight = Math.max(
+        70,
+        Math.min(125, simHeight)
+    );
+
+    const size = simWidth * simHeight;
+
+    density = new Float32Array(size);
+    densityNext = new Float32Array(size);
+
+    velocityX = new Float32Array(size);
+    velocityY = new Float32Array(size);
+
+    velocityXNext = new Float32Array(size);
+    velocityYNext = new Float32Array(size);
+
+    pixels = new Uint8ClampedArray(size * 4);
+}
+
+window.addEventListener("resize", resize);
+
+resize();
+
+function index(x, y) {
+    return x + y * simWidth;
+}
+
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+}
+
+function sample(field, x, y) {
+
+    x = clamp(
+        x,
+        0,
+        simWidth - 1.001
+    );
+
+    y = clamp(
+        y,
+        0,
+        simHeight - 1.001
+    );
+
+    const x0 = Math.floor(x);
+    const y0 = Math.floor(y);
+
+    const x1 = Math.min(
+        x0 + 1,
+        simWidth - 1
+    );
+
+    const y1 = Math.min(
+        y0 + 1,
+        simHeight - 1
+    );
+
+    const tx = x - x0;
+    const ty = y - y0;
+
+    const a = field[index(x0, y0)];
+    const b = field[index(x1, y0)];
+    const c = field[index(x0, y1)];
+    const d = field[index(x1, y1)];
+
+    return (
+        a * (1 - tx) * (1 - ty) +
+        b * tx * (1 - ty) +
+        c * (1 - tx) * ty +
+        d * tx * ty
+    );
+}
+
+/*
+    Move the fluid field through itself.
+*/
+function advectVelocity() {
+
+    for (let y = 1; y < simHeight - 1; y++) {
+
+        for (let x = 1; x < simWidth - 1; x++) {
+
+            const i = index(x, y);
+
+            const vx = velocityX[i];
+            const vy = velocityY[i];
+
+            const previousX = x - vx;
+            const previousY = y - vy;
+
+            velocityXNext[i] =
+                sample(
+                    velocityX,
+                    previousX,
+                    previousY
+                );
+
+            velocityYNext[i] =
+                sample(
+                    velocityY,
+                    previousX,
+                    previousY
+                );
+        }
+    }
+
+    [velocityX, velocityXNext] =
+        [velocityXNext, velocityX];
+
+    [velocityY, velocityYNext] =
+        [velocityYNext, velocityY];
+}
+
+/*
+    Move the actual ink.
+*/
+function advectDensity() {
+
+    for (let y = 0; y < simHeight; y++) {
+
+        for (let x = 0; x < simWidth; x++) {
+
+            const i = index(x, y);
+
+            const vx = velocityX[i];
+            const vy = velocityY[i];
+
+            const previousX = x - vx;
+            const previousY = y - vy;
+
+            densityNext[i] =
+                sample(
+                    density,
+                    previousX,
+                    previousY
+                ) * SETTINGS.fade;
+        }
+    }
+
+    [density, densityNext] =
+        [densityNext, density];
+}
+
+/*
+    Softens hard edges so the ink behaves
+    more like liquid than pixels.
+*/
+function diffuse() {
+
+    for (let y = 1; y < simHeight - 1; y++) {
+
+        for (let x = 1; x < simWidth - 1; x++) {
+
+            const i = index(x, y);
+
+            const surrounding =
+                (
+                    density[index(x - 1, y)] +
+                    density[index(x + 1, y)] +
+                    density[index(x, y - 1)] +
+                    density[index(x, y + 1)]
+                ) * 0.25;
+
+            densityNext[i] =
+                density[i] +
+                (
+                    surrounding -
+                    density[i]
+                ) * SETTINGS.diffusion;
+        }
+    }
+
+    for (let x = 0; x < simWidth; x++) {
+
+        densityNext[index(x, 0)] =
+            density[index(x, 0)];
+
+        densityNext[index(x, simHeight - 1)] =
+            density[index(x, simHeight - 1)];
+    }
+
+    for (let y = 0; y < simHeight; y++) {
+
+        densityNext[index(0, y)] =
+            density[index(0, y)];
+
+        densityNext[index(simWidth - 1, y)] =
+            density[index(simWidth - 1, y)];
+    }
+
+    [density, densityNext] =
+        [densityNext, density];
+}
+
+/*
+    Gravity + fluid motion.
+*/
+function physics() {
+
+    for (let y = 0; y < simHeight; y++) {
+
+        for (let x = 0; x < simWidth; x++) {
+
+            const i = index(x, y);
+
+            velocityY[i] += SETTINGS.gravity;
+
+            /*
+                Very subtle sideways movement.
+                Prevents the ink from falling like
+                completely straight drops.
+            */
+            velocityX[i] +=
+                Math.sin(
+                    y * 0.12 +
+                    performance.now() * 0.00025
+                ) * SETTINGS.flow * 0.015;
+
+            velocityX[i] *= SETTINGS.velocityFade;
+            velocityY[i] *= SETTINGS.velocityFade;
+
+            /*
+                Bottom boundary.
+                Ink pools instead of disappearing
+                immediately off the screen.
+            */
+            if (y >= simHeight - 2) {
+
+                velocityY[i] *= 0.35;
+                velocityX[i] *= 0.985;
+            }
+
+            /*
+                Side boundaries.
+            */
+            if (x <= 0 || x >= simWidth - 1) {
+                velocityX[i] *= -0.15;
+            }
+        }
+    }
+}
+
+/*
+    Adds ink around a point.
+*/
+function addInk(
+    screenX,
+    screenY,
+    amount,
+    radius,
+    pushX,
+    pushY
+) {
+
+    const gx =
+        screenX / width * simWidth;
+
+    const gy =
+        screenY / height * simHeight;
+
+    const minX =
+        Math.max(
+            1,
+            Math.floor(gx - radius)
+        );
+
+    const maxX =
+        Math.min(
+            simWidth - 2,
+            Math.ceil(gx + radius)
+        );
+
+    const minY =
+        Math.max(
+            1,
+            Math.floor(gy - radius)
+        );
+
+    const maxY =
+        Math.min(
+            simHeight - 2,
+            Math.ceil(gy + radius)
+        );
+
+    for (let y = minY; y <= maxY; y++) {
+
+        for (let x = minX; x <= maxX; x++) {
+
+            const dx = x - gx;
+            const dy = y - gy;
+
+            const distance =
+                Math.sqrt(
+                    dx * dx +
+                    dy * dy
+                );
+
+            if (distance > radius) {
+                continue;
+            }
+
+            const normalized =
+                1 - distance / radius;
+
+            /*
+                Smooth brush falloff.
+            */
+            const falloff =
+                normalized *
+                normalized *
+                (3 - 2 * normalized);
+
+            const i = index(x, y);
+
+            density[i] =
+                Math.min(
+                    1,
+                    density[i] +
+                    amount * falloff
+                );
+
+            velocityX[i] +=
+                pushX * falloff;
+
+            velocityY[i] +=
+                pushY * falloff;
+        }
+    }
+}
+
+/*
+    Draws continuously between pointer positions.
+    This prevents gaps when moving quickly.
+*/
+function drawStroke(
+    x1,
+    y1,
+    x2,
+    y2
+) {
+
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+
+    const distance =
+        Math.sqrt(
+            dx * dx +
+            dy * dy
+        );
+
+    const steps =
+        Math.max(
+            1,
+            Math.ceil(distance / 3)
+        );
+
+    const speed =
+        Math.min(
+            1,
+            distance / 50
+        );
+
+    const amount =
+        SETTINGS.inkAmount *
+        pointer.pressure;
+
+    /*
+        Slightly thicker when moving slowly.
+        This makes it feel more like a brush.
+    */
+    const radius =
+        SETTINGS.brushSize *
+        (1.15 - speed * 0.3);
+
+    for (let i = 0; i <= steps; i++) {
+
+        const t = i / steps;
+
+        const x =
+            x1 + dx * t;
+
+        const y =
+            y1 + dy * t;
+
+        addInk(
+            x,
+            y,
+            amount / steps * 2.2,
+            radius,
+            dx * 0.018,
+            dy * 0.018
+        );
+    }
+}
+
+/*
+    Gives nearby ink a slight tendency
+    to merge together.
+*/
+function mergeFlow() {
+
+    for (let y = 1; y < simHeight - 1; y++) {
+
+        for (let x = 1; x < simWidth - 1; x++) {
+
+            const i = index(x, y);
+
+            const d = density[i];
+
+            if (d < 0.002) {
+                continue;
+            }
+
+            const right =
+                density[index(x + 1, y)];
+
+            const left =
+                density[index(x - 1, y)];
+
+            const down =
+                density[index(x, y + 1)];
+
+            const up =
+                density[index(x, y - 1)];
+
+            const horizontal =
+                right - left;
+
+            const vertical =
+                down - up;
+
+            velocityX[i] +=
+                horizontal * 0.045;
+
+            velocityY[i] +=
+                vertical * 0.045;
+        }
+    }
+}
+
+/*
+    Simulation step.
+*/
+function update() {
+
+    advectVelocity();
+
+    physics();
+
+    mergeFlow();
+
+    advectDensity();
+
+    diffuse();
+
+    if (pointer.down) {
+
+        drawStroke(
+            pointer.lastX,
+            pointer.lastY,
+            pointer.x,
+            pointer.y
+        );
+    }
+
+    pointer.lastX = pointer.x;
+    pointer.lastY = pointer.y;
+}
+
+/*
+    Render the density field as neon blue ink.
+*/
+function render() {
+
+    for (let y = 0; y < simHeight; y++) {
+
+        for (let x = 0; x < simWidth; x++) {
+
+            const i = index(x, y);
+
+            const d = density[i];
+
+            const left =
+                density[
+                    index(
+                        Math.max(0, x - 1),
+                        y
+                    )
+                ];
+
+            const right =
+                density[
+                    index(
+                        Math.min(simWidth - 1, x + 1),
+                        y
+                    )
+                ];
+
+            const up =
+                density[
+                    index(
+                        x,
+                        Math.max(0, y - 1)
+                    )
+                ];
+
+            const down =
+                density[
+                    index(
+                        x,
+                        Math.min(simHeight - 1, y + 1)
+                    )
+                ];
+
+            /*
+                Surface direction.
+            */
+            const nx = left - right;
+            const ny = up - down;
+
+            const edge =
+                Math.min(
+                    1,
+                    Math.sqrt(
+                        nx * nx +
+                        ny * ny
+                    ) * 3.2
+                );
+
+            /*
+                Stronger center,
+                softer edges.
+            */
+            const core =
+                Math.pow(
+                    clamp(d, 0, 1),
+                    0.62
+                );
+
+            /*
+                Neon blue palette.
+            */
+            let r =
+                core * 5 +
+                edge * 2;
+
+            let g =
+                core * 90 +
+                edge * 45;
+
+            let b =
+                core * 255 +
+                edge * 150;
+
+            /*
+                Almost invisible when fading.
+            */
+            if (d < 0.006) {
+                r = 0;
+                g = 0;
+                b = 0;
+            }
+
+            pixels[i * 4] =
+                Math.min(255, r);
+
+            pixels[i * 4 + 1] =
+                Math.min(255, g);
+
+            pixels[i * 4 + 2] =
+                Math.min(255, b);
+
+            pixels[i * 4 + 3] = 255;
+        }
+    }
+
+    /*
+        Put the simulation into a temporary
+        low-resolution canvas.
+    */
+    const smallCanvas =
+        render.smallCanvas ||
+        (render.smallCanvas =
+            document.createElement("canvas"));
+
+    const smallCtx =
+        render.smallCtx ||
+        (render.smallCtx =
+            smallCanvas.getContext("2d"));
+
+    if (
+        smallCanvas.width !== simWidth ||
+        smallCanvas.height !== simHeight
+    ) {
+        smallCanvas.width = simWidth;
+        smallCanvas.height = simHeight;
+    }
+
+    const frame =
+        new ImageData(
+            pixels,
+            simWidth,
+            simHeight
+        );
+
+    smallCtx.putImageData(
+        frame,
+        0,
+        0
+    );
+
+    /*
+        Black background.
+    */
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(
+        0,
+        0,
+        width,
+        height
+    );
+
+    /*
+        Very subtle glow behind the liquid.
+    */
+    ctx.save();
+
+    ctx.globalAlpha = 0.22;
+    ctx.filter = "blur(12px)";
+    ctx.globalCompositeOperation =
+        "screen";
+
+    ctx.drawImage(
+        smallCanvas,
+        0,
+        0,
+        width,
+        height
+    );
+
+    ctx.restore();
+
+    /*
+        Main crisp-ish fluid layer.
+    */
+    ctx.save();
+
+    ctx.globalCompositeOperation =
+        "screen";
+
+    ctx.imageSmoothingEnabled = true;
+
+    ctx.drawImage(
+        smallCanvas,
+        0,
+        0,
+        width,
+        height
+    );
+
+    ctx.restore();
+}
+
+function frame() {
+
+    update();
+
+    render();
+
+    requestAnimationFrame(frame);
+}
+
+/*
+    Convert pointer coordinates.
+*/
+function getPointerPosition(event) {
+
+    const rect =
+        canvas.getBoundingClientRect();
+
+    return {
+        x:
+            event.clientX -
+            rect.left,
+
+        y:
+            event.clientY -
+            rect.top
+    };
+}
+
+canvas.addEventListener(
+    "pointerdown",
+    event => {
+
+        const p =
+            getPointerPosition(event);
+
+        pointer.x = p.x;
+        pointer.y = p.y;
+
+        pointer.lastX = p.x;
+        pointer.lastY = p.y;
+
+        pointer.down = true;
+
+        /*
+            Touch devices can provide pressure.
+        */
+        pointer.pressure =
+            event.pressure > 0
+                ? Math.max(
+                    0.7,
+                    event.pressure
+                )
+                : 1;
+
+        canvas.setPointerCapture(
+            event.pointerId
+        );
+
+        /*
+            Initial brush dab.
+        */
+        addInk(
+            p.x,
+            p.y,
+            0.9,
+            7,
+            0,
+            0
+        );
+    }
+);
+
+canvas.addEventListener(
+    "pointermove",
+    event => {
+
+        const p =
+            getPointerPosition(event);
+
+        pointer.x = p.x;
+        pointer.y = p.y;
+
+        if (event.pressure > 0) {
+
+            pointer.pressure =
+                Math.max(
+                    0.7,
+                    event.pressure
+                );
+        }
+    }
+);
+
+canvas.addEventListener(
+    "pointerup",
+    event => {
+
+        pointer.down = false;
+
+        try {
+            canvas.releasePointerCapture(
+                event.pointerId
+            );
+        } catch {}
+    }
+);
+
+canvas.addEventListener(
+    "pointercancel",
+    () => {
+        pointer.down = false;
+    }
+);
+
+canvas.addEventListener(
+    "pointerleave",
+    () => {
+        /*
+            Don't erase the ink when the
+            pointer leaves the screen.
+        */
+    }
+);
+
+frame();
+</script>
+
+</body>
+</html>
