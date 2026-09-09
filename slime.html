@@ -13,25 +13,23 @@
 <title>Slime</title>
 
 <style>
-    html,
-    body {
-        margin: 0;
-        padding: 0;
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-        background: #07110d;
-        touch-action: none;
-    }
+html,
+body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #07110d;
+    touch-action: none;
+}
 
-    canvas {
-        position: fixed;
-        inset: 0;
-        width: 100vw;
-        height: 100vh;
-        display: block;
-        touch-action: none;
-    }
+canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    touch-action: none;
+}
 </style>
 </head>
 
@@ -41,86 +39,70 @@
 
 <script>
 const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d", {
+    alpha: false
+});
 
-const gl =
-    canvas.getContext("webgl", {
-        antialias: true,
-        alpha: false,
-        premultipliedAlpha: false
-    }) ||
-    canvas.getContext("experimental-webgl");
+const surface = document.createElement("canvas");
+const surfaceCtx = surface.getContext("2d", {
+    alpha: false
+});
 
-if (!gl) {
-    document.body.innerHTML =
-        "<p style='color:white;font-family:sans-serif;padding:20px'>WebGL is not supported.</p>";
-    throw new Error("WebGL unavailable");
-}
+let width = 0;
+let height = 0;
+let dpr = 1;
 
+const spacing = 12;
+const renderScale = 3;
 
-/* ==================================================
-   SETTINGS
-================================================== */
+let cols = 0;
+let rows = 0;
+let points = [];
 
-const CELL_SIZE = 6;
-const RADIUS = 10;
-
-const IMAGE_OPACITY = 0.6;
-
-/*
-    Maximum physical displacement of the image
-    caused by the slime surface.
-*/
-const IMAGE_WARP = 0.045;
-
-/*
-    How strongly the green slime reacts.
-*/
-const SLIME_DEPTH = 1.0;
+const pointer = {
+    x: 0,
+    y: 0,
+    lastX: 0,
+    lastY: 0,
+    vx: 0,
+    vy: 0,
+    active: false
+};
 
 
-/* ==================================================
-   CANVAS
-================================================== */
-
-let width = 1;
-let height = 1;
+/* ==============================
+   RESIZE
+============================== */
 
 function resize() {
 
-    const dpr =
-        Math.min(window.devicePixelRatio || 1, 2);
-
-    width =
-        Math.max(1, Math.floor(
-            window.innerWidth * dpr
-        ));
-
-    height =
-        Math.max(1, Math.floor(
-            window.innerHeight * dpr
-        ));
-
-    canvas.width = width;
-    canvas.height = height;
-
-    canvas.style.width =
-        window.innerWidth + "px";
-
-    canvas.style.height =
-        window.innerHeight + "px";
-
-    gl.viewport(
-        0,
-        0,
-        width,
-        height
+    dpr = Math.min(
+        window.devicePixelRatio || 1,
+        2
     );
 
-    createSimulation();
+    width = window.innerWidth;
+    height = window.innerHeight;
 
-    if (imageTexture) {
-        updateImageTexture();
-    }
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+
+    ctx.setTransform(
+        dpr,
+        0,
+        0,
+        dpr,
+        0,
+        0
+    );
+
+    surface.width =
+        Math.ceil(width / renderScale);
+
+    surface.height =
+        Math.ceil(height / renderScale);
+
+    buildGrid();
 }
 
 window.addEventListener(
@@ -129,243 +111,226 @@ window.addEventListener(
 );
 
 
-/* ==================================================
-   SIMULATION GRID
-================================================== */
+/* ==============================
+   INVISIBLE PHYSICS GRID
+============================== */
 
-let gridWidth = 1;
-let gridHeight = 1;
+function buildGrid() {
 
-let depth = null;
-let velocity = null;
+    cols =
+        Math.ceil(width / spacing) + 2;
 
-let depthTexture = null;
+    rows =
+        Math.ceil(height / spacing) + 2;
 
-function createSimulation() {
+    points =
+        new Array(cols * rows);
 
-    gridWidth =
-        Math.ceil(width / CELL_SIZE) + 1;
+    for (let y = 0; y < rows; y++) {
 
-    gridHeight =
-        Math.ceil(height / CELL_SIZE) + 1;
+        for (let x = 0; x < cols; x++) {
 
-    depth =
-        new Float32Array(
-            gridWidth * gridHeight
-        );
+            const px =
+                (x - 1) * spacing;
 
-    velocity =
-        new Float32Array(
-            gridWidth * gridHeight
-        );
+            const py =
+                (y - 1) * spacing;
 
-    if (!depthTexture) {
-        depthTexture =
-            gl.createTexture();
+            points[
+                y * cols + x
+            ] = {
+
+                x: px,
+                y: py,
+
+                baseX: px,
+                baseY: py,
+
+                vx: 0,
+                vy: 0,
+
+                z: 0,
+                vz: 0
+            };
+        }
+    }
+}
+
+
+/* ==============================
+   POINTER
+============================== */
+
+function pointerMove(x, y) {
+
+    if (!pointer.active) {
+
+        pointer.x = x;
+        pointer.y = y;
+
+        pointer.lastX = x;
+        pointer.lastY = y;
+
+        return;
     }
 
-    gl.bindTexture(
-        gl.TEXTURE_2D,
-        depthTexture
-    );
+    pointer.lastX = pointer.x;
+    pointer.lastY = pointer.y;
 
-    gl.texParameteri(
-        gl.TEXTURE_2D,
-        gl.TEXTURE_MIN_FILTER,
-        gl.LINEAR
-    );
+    pointer.x = x;
+    pointer.y = y;
 
-    gl.texParameteri(
-        gl.TEXTURE_2D,
-        gl.TEXTURE_MAG_FILTER,
-        gl.LINEAR
-    );
+    pointer.vx =
+        x - pointer.lastX;
 
-    gl.texParameteri(
-        gl.TEXTURE_2D,
-        gl.TEXTURE_WRAP_S,
-        gl.CLAMP_TO_EDGE
-    );
-
-    gl.texParameteri(
-        gl.TEXTURE_2D,
-        gl.TEXTURE_WRAP_T,
-        gl.CLAMP_TO_EDGE
-    );
-
-    /*
-        WebGL1 does not have a float texture
-        by default, so the depth field is encoded
-        into RGBA.
-    */
-
-    depthPixels =
-        new Uint8Array(
-            gridWidth *
-            gridHeight *
-            4
-        );
-
-    uploadDepth();
+    pointer.vy =
+        y - pointer.lastY;
 }
 
-let depthPixels;
-
-
-/* ==================================================
-   POINTER
-================================================== */
-
-let pointerX = 0;
-let pointerY = 0;
-
-let touching = false;
-
-function setPointer(e) {
-
-    const rect =
-        canvas.getBoundingClientRect();
-
-    pointerX =
-        (e.clientX - rect.left) *
-        (width / rect.width);
-
-    pointerY =
-        (rect.height -
-            (e.clientY - rect.top)) *
-        (height / rect.height);
-}
 
 canvas.addEventListener(
     "pointerdown",
     e => {
 
-        touching = true;
+        pointer.active = true;
 
-        setPointer(e);
+        pointer.x = e.clientX;
+        pointer.y = e.clientY;
 
-        try {
-            canvas.setPointerCapture(
-                e.pointerId
-            );
-        } catch {}
+        pointer.lastX = pointer.x;
+        pointer.lastY = pointer.y;
+
+        pointer.vx = 0;
+        pointer.vy = 0;
+
+        canvas.setPointerCapture?.(
+            e.pointerId
+        );
     }
 );
+
 
 canvas.addEventListener(
     "pointermove",
     e => {
 
-        setPointer(e);
+        pointerMove(
+            e.clientX,
+            e.clientY
+        );
     }
 );
 
-function releasePointer(e) {
-
-    touching = false;
-
-    try {
-        canvas.releasePointerCapture(
-            e.pointerId
-        );
-    } catch {}
-}
 
 canvas.addEventListener(
     "pointerup",
-    releasePointer
+    () => {
+
+        pointer.active = false;
+    }
 );
+
 
 canvas.addEventListener(
     "pointercancel",
-    releasePointer
+    () => {
+
+        pointer.active = false;
+    }
 );
 
 
-/* ==================================================
-   SIMULATION
-================================================== */
+/* ==============================
+   SLIME PHYSICS
+============================== */
 
-function gridIndex(x, y) {
-    return y * gridWidth + x;
-}
+function update() {
 
-function simulate(dt) {
-
-    /*
-        Limit timestep so returning from a
-        background tab doesn't explode the simulation.
-    */
-
-    dt =
-        Math.min(dt, 0.033);
-
-    const cx =
-        pointerX / CELL_SIZE;
-
-    /*
-        Convert WebGL bottom-origin Y into
-        the simulation's top-origin coordinates.
-    */
-
-    const cy =
-        (height - pointerY) / CELL_SIZE;
-
-    /*
-        ----------------------------------------------
-        HOLDING FINGER
-        ----------------------------------------------
-
-        The slime is continually held down.
-
-        There is deliberately NO spring force here.
-        Therefore the deformation doesn't start
-        returning while the finger is touching.
-    */
-
-    if (touching) {
-
-        const minX =
-            Math.max(
-                1,
-                Math.floor(cx - RADIUS)
-            );
-
-        const maxX =
-            Math.min(
-                gridWidth - 2,
-                Math.ceil(cx + RADIUS)
-            );
-
-        const minY =
-            Math.max(
-                1,
-                Math.floor(cy - RADIUS)
-            );
-
-        const maxY =
-            Math.min(
-                gridHeight - 2,
-                Math.ceil(cy + RADIUS)
-            );
+    for (
+        let y = 1;
+        y < rows - 1;
+        y++
+    ) {
 
         for (
-            let y = minY;
-            y <= maxY;
-            y++
+            let x = 1;
+            x < cols - 1;
+            x++
         ) {
 
-            for (
-                let x = minX;
-                x <= maxX;
-                x++
-            ) {
+            const i =
+                y * cols + x;
+
+            const p =
+                points[i];
+
+            const left =
+                points[i - 1];
+
+            const right =
+                points[i + 1];
+
+            const up =
+                points[i - cols];
+
+            const down =
+                points[i + cols];
+
+
+            /* --------------------------
+               FLOW BETWEEN NEIGHBORS
+            -------------------------- */
+
+            const avgVX =
+                (
+                    left.vx +
+                    right.vx +
+                    up.vx +
+                    down.vx
+                ) * 0.25;
+
+            const avgVY =
+                (
+                    left.vy +
+                    right.vy +
+                    up.vy +
+                    down.vy
+                ) * 0.25;
+
+
+            p.vx +=
+                (avgVX - p.vx) *
+                0.075;
+
+            p.vy +=
+                (avgVY - p.vy) *
+                0.075;
+
+
+            /* --------------------------
+               RETURN TO REST
+            -------------------------- */
+
+            p.vx +=
+                (p.baseX - p.x) *
+                0.012;
+
+            p.vy +=
+                (p.baseY - p.y) *
+                0.012;
+
+
+            /* --------------------------
+               TOUCH / MOUSE FLOW
+            -------------------------- */
+
+            if (pointer.active) {
 
                 const dx =
-                    x - cx;
+                    p.x - pointer.x;
 
                 const dy =
-                    y - cy;
+                    p.y - pointer.y;
 
                 const distance =
                     Math.sqrt(
@@ -373,963 +338,620 @@ function simulate(dt) {
                         dy * dy
                     );
 
-                if (
-                    distance > RADIUS
-                ) {
-                    continue;
+                const radius = 165;
+
+                if (distance < radius) {
+
+                    const raw =
+                        1 -
+                        distance / radius;
+
+                    const influence =
+                        raw *
+                        raw *
+                        (3 - 2 * raw);
+
+
+                    let nx = 0;
+                    let ny = 0;
+
+                    if (distance > 0.001) {
+
+                        nx =
+                            dx / distance;
+
+                        ny =
+                            dy / distance;
+                    }
+
+
+                    /*
+                        Main flow.
+                    */
+
+                    p.vx +=
+                        pointer.vx *
+                        influence *
+                        0.24;
+
+                    p.vy +=
+                        pointer.vy *
+                        influence *
+                        0.24;
+
+
+                    /*
+                        Slight outward movement.
+                    */
+
+                    p.vx +=
+                        nx *
+                        influence *
+                        0.22;
+
+                    p.vy +=
+                        ny *
+                        influence *
+                        0.22;
+
+
+                    /*
+                        Deform surface.
+                    */
+
+                    p.vz -=
+                        influence *
+                        0.85;
                 }
-
-                let falloff =
-                    1 -
-                    distance / RADIUS;
-
-                /*
-                    Smooth circle.
-                */
-
-                falloff =
-                    falloff *
-                    falloff *
-                    (3 - 2 * falloff);
-
-                const i =
-                    gridIndex(x, y);
-
-                /*
-                    Strong enough to visibly
-                    push the surface down.
-                */
-
-                depth[i] -=
-                    falloff *
-                    0.085;
-
-                /*
-                    Small velocity contribution
-                    makes the surrounding slime
-                    react naturally.
-                */
-
-                velocity[i] -=
-                    falloff *
-                    0.18 *
-                    dt;
             }
-        }
-    }
 
-    /*
-        ----------------------------------------------
-        DEPTH PROPAGATION
-        ----------------------------------------------
 
-        Nearby cells influence one another.
-    */
+            /* --------------------------
+               MOTION DAMPING
+            -------------------------- */
 
-    const next =
-        new Float32Array(
-            depth.length
-        );
+            p.vx *= 0.91;
+            p.vy *= 0.91;
 
-    for (
-        let y = 1;
-        y < gridHeight - 1;
-        y++
-    ) {
+            p.x += p.vx;
+            p.y += p.vy;
 
-        for (
-            let x = 1;
-            x < gridWidth - 1;
-            x++
-        ) {
 
-            const i =
-                gridIndex(x, y);
+            /* --------------------------
+               DEPTH FLOW
+            -------------------------- */
 
-            const average =
+            const avgZ =
                 (
-                    depth[
-                        gridIndex(x - 1, y)
-                    ] +
-                    depth[
-                        gridIndex(x + 1, y)
-                    ] +
-                    depth[
-                        gridIndex(x, y - 1)
-                    ] +
-                    depth[
-                        gridIndex(x, y + 1)
-                    ]
+                    left.z +
+                    right.z +
+                    up.z +
+                    down.z
                 ) * 0.25;
 
-            /*
-                Very small propagation so the
-                deformation doesn't spread too far.
-            */
-
-            velocity[i] +=
+            const avgVZ =
                 (
-                    average - depth[i]
-                ) *
-                5.0 *
-                dt;
+                    left.vz +
+                    right.vz +
+                    up.vz +
+                    down.vz
+                ) * 0.25;
+
+
+            p.vz +=
+                (avgVZ - p.vz) *
+                0.055;
+
+            p.vz +=
+                (avgZ - p.z) *
+                0.13;
+
 
             /*
-                While holding, movement is damped
-                but NOT returned to zero.
+                Slowly flatten.
             */
 
-            if (touching) {
+            p.vz -=
+                p.z *
+                0.045;
 
-                velocity[i] *=
-                    Math.exp(
-                        -5.0 * dt
-                    );
-            }
+            p.vz *= 0.88;
 
-            next[i] =
-                depth[i] +
-                velocity[i] * dt;
+            p.z += p.vz;
+
+            p.z =
+                Math.max(
+                    -55,
+                    Math.min(55, p.z)
+                );
         }
     }
 
+
+    pointer.vx *= 0.65;
+    pointer.vy *= 0.65;
+}
+
+
+/* ==============================
+   HEIGHT SAMPLING
+============================== */
+
+function sampleHeight(x, y) {
+
+    const gx =
+        x / spacing + 1;
+
+    const gy =
+        y / spacing + 1;
+
+    let x0 =
+        Math.floor(gx);
+
+    let y0 =
+        Math.floor(gy);
+
+    x0 =
+        Math.max(
+            0,
+            Math.min(
+                cols - 2,
+                x0
+            )
+        );
+
+    y0 =
+        Math.max(
+            0,
+            Math.min(
+                rows - 2,
+                y0
+            )
+        );
+
+    const x1 =
+        x0 + 1;
+
+    const y1 =
+        y0 + 1;
+
+    const tx =
+        gx - x0;
+
+    const ty =
+        gy - y0;
+
+    const z00 =
+        points[
+            y0 * cols + x0
+        ].z;
+
+    const z10 =
+        points[
+            y0 * cols + x1
+        ].z;
+
+    const z01 =
+        points[
+            y1 * cols + x0
+        ].z;
+
+    const z11 =
+        points[
+            y1 * cols + x1
+        ].z;
+
+
+    const a =
+        z00 +
+        (z10 - z00) * tx;
+
+    const b =
+        z01 +
+        (z11 - z01) * tx;
+
+
+    return (
+        a +
+        (b - a) * ty
+    );
+}
+
+
+/* ==============================
+   DEFORMATION NORMAL
+============================== */
+
+function getNormal(x, y) {
+
+    const step = 7;
+
+    const left =
+        sampleHeight(
+            x - step,
+            y
+        );
+
+    const right =
+        sampleHeight(
+            x + step,
+            y
+        );
+
+    const up =
+        sampleHeight(
+            x,
+            y - step
+        );
+
+    const down =
+        sampleHeight(
+            x,
+            y + step
+        );
+
+
+    const dx =
+        (right - left) /
+        (step * 2);
+
+    const dy =
+        (down - up) /
+        (step * 2);
+
+
     /*
-        ----------------------------------------------
-        RELEASE
-        ----------------------------------------------
+        The normal comes ONLY from
+        the deformation.
 
-        Only now does the slime reform.
-
-        The spring/damping combination is tuned
-        for approximately a 2-second visible return.
+        There is no corner light.
     */
 
-    if (!touching) {
+    let nx =
+        -dx * 2.7;
 
-        const spring = 7.0;
-        const damping = 5.5;
+    let ny =
+        -dy * 2.7;
+
+    let nz = 1;
+
+
+    const length =
+        Math.sqrt(
+            nx * nx +
+            ny * ny +
+            nz * nz
+        );
+
+
+    nx /= length;
+    ny /= length;
+    nz /= length;
+
+
+    return {
+        x: nx,
+        y: ny,
+        z: nz
+    };
+}
+
+
+/* ==============================
+   DEFORMATION SHADING
+============================== */
+
+function render() {
+
+    const sw =
+        surface.width;
+
+    const sh =
+        surface.height;
+
+    const image =
+        surfaceCtx.createImageData(
+            sw,
+            sh
+        );
+
+    const data =
+        image.data;
+
+
+    for (
+        let py = 0;
+        py < sh;
+        py++
+    ) {
 
         for (
-            let i = 0;
-            i < depth.length;
-            i++
+            let px = 0;
+            px < sw;
+            px++
         ) {
 
-            velocity[i] +=
-                -depth[i] *
-                spring *
-                dt;
+            const x =
+                px * renderScale;
 
-            velocity[i] *=
-                Math.exp(
-                    -damping * dt
+            const y =
+                py * renderScale;
+
+
+            const z =
+                sampleHeight(
+                    x,
+                    y
                 );
 
-            next[i] =
-                depth[i] +
-                velocity[i] * dt;
+
+            const normal =
+                getNormal(
+                    x,
+                    y
+                );
+
+
+            /*
+                Lighting is based on the
+                deformation normal.
+
+                This is a simple material
+                response rather than a
+                fixed corner light.
+            */
+
+            const nx =
+                normal.x;
+
+            const ny =
+                normal.y;
+
+            const nz =
+                normal.z;
+
+
+            /*
+                Soft directional response
+                derived from the surface
+                orientation.
+
+                No light object is drawn.
+            */
+
+            const directional =
+                Math.max(
+                    0,
+                    nx * -0.35 +
+                    ny * -0.55 +
+                    nz * 0.75
+                );
+
+
+            const underside =
+                Math.max(
+                    0,
+                    -nx * 0.30 +
+                    -ny * 0.15 +
+                    nz * 0.25
+                );
+
+
+            /*
+                Gloss appears where the
+                surface is facing upward.
+            */
+
+            const gloss =
+                Math.pow(
+                    Math.max(
+                        0,
+                        nz
+                    ),
+                    12
+                );
+
+
+            /*
+                Deeper deformation is darker.
+            */
+
+            const depth =
+                z / 55;
+
+
+            let brightness =
+                0.35 +
+                directional * 0.55 +
+                underside * 0.12 +
+                depth * 0.10 +
+                gloss * 0.12;
+
+
+            brightness =
+                Math.max(
+                    0.10,
+                    Math.min(
+                        1.15,
+                        brightness
+                    )
+                );
+
+
+            /*
+                Base slime.
+            */
+
+            let r = 20;
+            let g = 138;
+            let b = 58;
+
+
+            /*
+                Raised areas become a little
+                brighter.
+            */
+
+            if (z > 0) {
+
+                const raised =
+                    Math.min(
+                        1,
+                        z / 55
+                    );
+
+                r +=
+                    raised * 12;
+
+                g +=
+                    raised * 18;
+
+                b +=
+                    raised * 7;
+            }
+
+
+            /*
+                Indented areas become richer.
+            */
+
+            if (z < 0) {
+
+                const deep =
+                    Math.min(
+                        1,
+                        -z / 55
+                    );
+
+                r *=
+                    1 -
+                    deep * 0.18;
+
+                g *=
+                    1 -
+                    deep * 0.22;
+
+                b *=
+                    1 -
+                    deep * 0.14;
+            }
+
+
+            r *= brightness;
+            g *= brightness;
+            b *= brightness;
+
+
+            /*
+                Very subtle deformation
+                highlight.
+            */
+
+            const highlight =
+                gloss *
+                Math.max(
+                    0,
+                    1 -
+                    Math.abs(
+                        normal.x
+                    )
+                );
+
+
+            r +=
+                highlight * 18;
+
+            g +=
+                highlight * 24;
+
+            b +=
+                highlight * 15;
+
+
+            const index =
+                (
+                    py * sw +
+                    px
+                ) * 4;
+
+
+            data[index] =
+                Math.min(
+                    255,
+                    r
+                );
+
+            data[index + 1] =
+                Math.min(
+                    255,
+                    g
+                );
+
+            data[index + 2] =
+                Math.min(
+                    255,
+                    b
+                );
+
+            data[index + 3] =
+                255;
         }
     }
 
-    /*
-        Copy simulation state.
-    */
 
-    depth.set(next);
-
-    /*
-        Keep the edges fixed.
-    */
-
-    for (
-        let x = 0;
-        x < gridWidth;
-        x++
-    ) {
-
-        depth[
-            gridIndex(x, 0)
-        ] = 0;
-
-        depth[
-            gridIndex(
-                x,
-                gridHeight - 1
-            )
-        ] = 0;
-    }
-
-    for (
-        let y = 0;
-        y < gridHeight;
-        y++
-    ) {
-
-        depth[
-            gridIndex(0, y)
-        ] = 0;
-
-        depth[
-            gridIndex(
-                gridWidth - 1,
-                y
-            )
-        ] = 0;
-    }
-}
-
-
-/* ==================================================
-   DEPTH → GPU TEXTURE
-================================================== */
-
-function uploadDepth() {
-
-    if (!depthTexture) {
-        return;
-    }
-
-    /*
-        Encode signed depth into 0–255.
-
-        128 = normal surface.
-        Lower values = pushed down.
-    */
-
-    for (
-        let i = 0;
-        i < depth.length;
-        i++
-    ) {
-
-        const encoded =
-            Math.max(
-                0,
-                Math.min(
-                    255,
-                    128 +
-                    depth[i] * 42
-                )
-            );
-
-        const p =
-            i * 4;
-
-        depthPixels[p] =
-            encoded;
-
-        depthPixels[p + 1] =
-            encoded;
-
-        depthPixels[p + 2] =
-            encoded;
-
-        depthPixels[p + 3] =
-            255;
-    }
-
-    gl.bindTexture(
-        gl.TEXTURE_2D,
-        depthTexture
-    );
-
-    gl.texImage2D(
-        gl.TEXTURE_2D,
+    surfaceCtx.putImageData(
+        image,
         0,
-        gl.RGBA,
-        gridWidth,
-        gridHeight,
-        0,
-        gl.RGBA,
-        gl.UNSIGNED_BYTE,
-        depthPixels
-    );
-}
-
-
-/* ==================================================
-   IMAGE
-================================================== */
-
-let imageTexture =
-    gl.createTexture();
-
-let imageLoaded = false;
-
-const image =
-    new Image();
-
-image.onload = () => {
-
-    imageLoaded = true;
-
-    updateImageTexture();
-};
-
-image.src = "Slime.png";
-
-
-function updateImageTexture() {
-
-    if (
-        !imageLoaded ||
-        !imageTexture
-    ) {
-        return;
-    }
-
-    gl.bindTexture(
-        gl.TEXTURE_2D,
-        imageTexture
-    );
-
-    gl.pixelStorei(
-        gl.UNPACK_FLIP_Y_WEBGL,
-        false
-    );
-
-    gl.texParameteri(
-        gl.TEXTURE_2D,
-        gl.TEXTURE_MIN_FILTER,
-        gl.LINEAR
-    );
-
-    gl.texParameteri(
-        gl.TEXTURE_2D,
-        gl.TEXTURE_MAG_FILTER,
-        gl.LINEAR
-    );
-
-    gl.texParameteri(
-        gl.TEXTURE_2D,
-        gl.TEXTURE_WRAP_S,
-        gl.CLAMP_TO_EDGE
-    );
-
-    gl.texParameteri(
-        gl.TEXTURE_2D,
-        gl.TEXTURE_WRAP_T,
-        gl.CLAMP_TO_EDGE
-    );
-
-    /*
-        The shader uses COVER behavior,
-        so the image always fills the entire
-        screen without moving during deformation.
-    */
-
-    gl.texImage2D(
-        gl.TEXTURE_2D,
-        0,
-        gl.RGBA,
-        gl.RGBA,
-        gl.UNSIGNED_BYTE,
-        image
-    );
-}
-
-
-/* ==================================================
-   SHADERS
-================================================== */
-
-const vertexShaderSource = `
-attribute vec2 a_position;
-
-varying vec2 v_uv;
-
-void main() {
-
-    v_uv =
-        a_position * 0.5 +
-        0.5;
-
-    gl_Position =
-        vec4(
-            a_position,
-            0.0,
-            1.0
-        );
-}
-`;
-
-
-const fragmentShaderSource = `
-precision highp float;
-
-varying vec2 v_uv;
-
-uniform sampler2D u_image;
-uniform sampler2D u_depth;
-
-uniform vec2 u_resolution;
-uniform vec2 u_imageResolution;
-
-uniform float u_opacity;
-
-
-/*
-    Read depth.
-
-    The simulation is only 6px resolution,
-    but texture filtering makes it appear
-    continuous.
-*/
-float getDepth(vec2 uv) {
-
-    return
-        (
-            texture2D(
-                u_depth,
-                uv
-            ).r
-            - 0.5
-        ) * 2.38;
-}
-
-
-void main() {
-
-    vec2 uv = v_uv;
-
-    /*
-        ------------------------------------------
-        COVER THE ENTIRE SCREEN
-        ------------------------------------------
-    */
-
-    float screenRatio =
-        u_resolution.x /
-        u_resolution.y;
-
-    float imageRatio =
-        u_imageResolution.x /
-        u_imageResolution.y;
-
-    vec2 imageUV;
-
-    if (
-        imageRatio >
-        screenRatio
-    ) {
-
-        float scale =
-            screenRatio /
-            imageRatio;
-
-        imageUV =
-            vec2(
-                uv.x,
-                0.5 +
-                (uv.y - 0.5) *
-                scale
-            );
-
-    } else {
-
-        float scale =
-            imageRatio /
-            screenRatio;
-
-        imageUV =
-            vec2(
-                0.5 +
-                (uv.x - 0.5) *
-                scale,
-                uv.y
-            );
-    }
-
-    /*
-        ------------------------------------------
-        LOCAL SLIME DEFORMATION
-        ------------------------------------------
-
-        The image quad never moves.
-
-        We change ONLY the UV coordinate used
-        to sample the image.
-
-        This means the image itself visibly
-        bends locally without the entire image
-        translating or scaling.
-    */
-
-    float texelX =
-        1.0 /
-        u_resolution.x *
-        6.0;
-
-    float texelY =
-        1.0 /
-        u_resolution.y *
-        6.0;
-
-    float d =
-        getDepth(uv);
-
-    float left =
-        getDepth(
-            uv -
-            vec2(
-                texelX,
-                0.0
-            )
-        );
-
-    float right =
-        getDepth(
-            uv +
-            vec2(
-                texelX,
-                0.0
-            )
-        );
-
-    float up =
-        getDepth(
-            uv +
-            vec2(
-                0.0,
-                texelY
-            )
-        );
-
-    float down =
-        getDepth(
-            uv -
-            vec2(
-                0.0,
-                texelY
-            )
-        );
-
-    vec2 gradient =
-        vec2(
-            right - left,
-            up - down
-        );
-
-    /*
-        Depth itself produces a subtle
-        local bulge/compression.
-
-        Gradient produces the actual
-        directional bending.
-    */
-
-    vec2 deformation =
-        gradient *
-        IMAGE_WARP;
-
-    deformation +=
-        vec2(
-            -gradient.y,
-            gradient.x
-        ) *
-        0.004 *
-        d;
-
-    imageUV += deformation;
-
-    /*
-        ------------------------------------------
-        SAMPLE IMAGE
-        ------------------------------------------
-    */
-
-    vec4 tex =
-        texture2D(
-            u_image,
-            imageUV
-        );
-
-    /*
-        ------------------------------------------
-        GREEN SLIME
-        ------------------------------------------
-    */
-
-    vec3 baseGreen =
-        vec3(
-            0.025,
-            0.48,
-            0.12
-        );
-
-    /*
-        Surface normal from depth.
-
-        This gives the green slime actual
-        depth without a flashing gloss effect.
-    */
-
-    vec3 normal =
-        normalize(
-            vec3(
-                -(right - left) * 1.5,
-                -(up - down) * 1.5,
-                1.0
-            )
-        );
-
-    vec3 lightDirection =
-        normalize(
-            vec3(
-                -0.45,
-                0.55,
-                0.9
-            )
-        );
-
-    float lighting =
-        max(
-            0.0,
-            dot(
-                normal,
-                lightDirection
-            )
-        );
-
-    float brightness =
-        0.62 +
-        lighting * 0.38;
-
-    /*
-        Slight darkening inside the depression.
-    */
-
-    float depression =
-        clamp(
-            -d * 0.22,
-            0.0,
-            0.22
-        );
-
-    vec3 slimeColor =
-        baseGreen *
-        brightness;
-
-    slimeColor *=
-        1.0 -
-        depression;
-
-
-    /*
-        ------------------------------------------
-        IMAGE + GREEN SLIME
-        ------------------------------------------
-    */
-
-    vec3 finalColor =
-        mix(
-            slimeColor,
-            tex.rgb,
-            u_opacity
-        );
-
-    gl_FragColor =
-        vec4(
-            finalColor,
-            1.0
-        );
-}
-`;
-
-
-/* ==================================================
-   SHADER COMPILATION
-================================================== */
-
-function createShader(
-    type,
-    source
-) {
-
-    const shader =
-        gl.createShader(type);
-
-    gl.shaderSource(
-        shader,
-        source
-    );
-
-    gl.compileShader(shader);
-
-    if (
-        !gl.getShaderParameter(
-            shader,
-            gl.COMPILE_STATUS
-        )
-    ) {
-
-        console.error(
-            gl.getShaderInfoLog(shader)
-        );
-
-        throw new Error(
-            "Shader compilation failed"
-        );
-    }
-
-    return shader;
-}
-
-
-const vertexShader =
-    createShader(
-        gl.VERTEX_SHADER,
-        vertexShaderSource
-    );
-
-const fragmentShader =
-    createShader(
-        gl.FRAGMENT_SHADER,
-        fragmentShaderSource
-    );
-
-
-const program =
-    gl.createProgram();
-
-gl.attachShader(
-    program,
-    vertexShader
-);
-
-gl.attachShader(
-    program,
-    fragmentShader
-);
-
-gl.linkProgram(program);
-
-if (
-    !gl.getProgramParameter(
-        program,
-        gl.LINK_STATUS
-    )
-) {
-
-    console.error(
-        gl.getProgramInfoLog(program)
-    );
-
-    throw new Error(
-        "WebGL program failed"
-    );
-}
-
-gl.useProgram(program);
-
-
-/* ==================================================
-   FULLSCREEN QUAD
-================================================== */
-
-const vertices =
-    new Float32Array([
-        -1, -1,
-         1, -1,
-        -1,  1,
-
-        -1,  1,
-         1, -1,
-         1,  1
-    ]);
-
-const vertexBuffer =
-    gl.createBuffer();
-
-gl.bindBuffer(
-    gl.ARRAY_BUFFER,
-    vertexBuffer
-);
-
-gl.bufferData(
-    gl.ARRAY_BUFFER,
-    vertices,
-    gl.STATIC_DRAW
-);
-
-const positionLocation =
-    gl.getAttribLocation(
-        program,
-        "a_position"
-    );
-
-gl.enableVertexAttribArray(
-    positionLocation
-);
-
-gl.vertexAttribPointer(
-    positionLocation,
-    2,
-    gl.FLOAT,
-    false,
-    0,
-    0
-);
-
-
-/* ==================================================
-   UNIFORMS
-================================================== */
-
-const imageLocation =
-    gl.getUniformLocation(
-        program,
-        "u_image"
-    );
-
-const depthLocation =
-    gl.getUniformLocation(
-        program,
-        "u_depth"
-    );
-
-const resolutionLocation =
-    gl.getUniformLocation(
-        program,
-        "u_resolution"
-    );
-
-const imageResolutionLocation =
-    gl.getUniformLocation(
-        program,
-        "u_imageResolution"
-    );
-
-const opacityLocation =
-    gl.getUniformLocation(
-        program,
-        "u_opacity"
-    );
-
-
-/* ==================================================
-   INITIALIZATION
-================================================== */
-
-resize();
-
-
-/* ==================================================
-   RENDER
-================================================== */
-
-let previousTime =
-    performance.now();
-
-function render(now) {
-
-    let dt =
-        (now - previousTime) /
-        1000;
-
-    previousTime =
-        now;
-
-    dt =
-        Math.min(
-            dt,
-            0.033
-        );
-
-    /*
-        CPU only handles the small 6px
-        simulation grid.
-    */
-
-    simulate(dt);
-
-    uploadDepth();
-
-    /*
-        GPU handles the actual fullscreen
-        slime shading and image deformation.
-    */
-
-    gl.clearColor(
-        0.025,
-        0.067,
-        0.04,
-        1.0
-    );
-
-    gl.clear(
-        gl.COLOR_BUFFER_BIT
-    );
-
-    gl.useProgram(program);
-
-    /*
-        Image texture → texture unit 0.
-    */
-
-    gl.activeTexture(
-        gl.TEXTURE0
-    );
-
-    gl.bindTexture(
-        gl.TEXTURE_2D,
-        imageTexture
-    );
-
-    gl.uniform1i(
-        imageLocation,
         0
     );
 
-    /*
-        Depth texture → texture unit 1.
-    */
 
-    gl.activeTexture(
-        gl.TEXTURE1
-    );
+    /* ==========================
+       FINAL SCREEN
+    ========================== */
 
-    gl.bindTexture(
-        gl.TEXTURE_2D,
-        depthTexture
-    );
-
-    gl.uniform1i(
-        depthLocation,
-        1
-    );
-
-    gl.uniform2f(
-        resolutionLocation,
+    ctx.clearRect(
+        0,
+        0,
         width,
         height
     );
 
-    gl.uniform2f(
-        imageResolutionLocation,
-        image.naturalWidth || 1,
-        image.naturalHeight || 1
-    );
+    ctx.imageSmoothingEnabled =
+        true;
 
-    gl.uniform1f(
-        opacityLocation,
-        IMAGE_OPACITY
-    );
-
-    gl.drawArrays(
-        gl.TRIANGLES,
+    ctx.drawImage(
+        surface,
         0,
-        6
-    );
-
-    requestAnimationFrame(
-        render
+        0,
+        width,
+        height
     );
 }
 
-requestAnimationFrame(
-    render
-);
+
+/* ==============================
+   LOOP
+============================== */
+
+function loop() {
+
+    update();
+    render();
+
+    requestAnimationFrame(
+        loop
+    );
+}
+
+
+/* ==============================
+   START
+============================== */
+
+resize();
+loop();
+
 </script>
 
 </body>
