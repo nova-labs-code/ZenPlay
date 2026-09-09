@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+
+<meta
+    name="viewport"
+    content="width=device-width,
+    initial-scale=1.0,
+    maximum-scale=1.0,
+    user-scalable=no,
+    viewport-fit=cover"
+>
+
+<title>Interactive Water</title>
+
+<style>
+html,
+body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #07518c;
+}
+
+body {
+    touch-action: none;
+}
+
+canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    touch-action: none;
+}
+</style>
+</head>
+
+<body>
+
+<canvas id="water"></canvas>
+
+<script>
+
+const canvas = document.getElementById("water");
+const ctx = canvas.getContext("2d");
+
+let width;
+let height;
+
+let pointer = {
+    x: 0,
+    y: 0,
+    down: false
+};
+
+let lastX = 0;
+let lastY = 0;
+
+
+/* =========================================
+   VISIBLE WATER EFFECTS
+========================================= */
+
+let effects = [];
+
+
+/* Minimum distance between ripple centers */
+const MIN_EFFECT_DISTANCE = 18;
+
+/* Ripple lifetime */
+const time = 3000;
+
+
+/* =========================================
+   ADD EFFECT
+========================================= */
+
+function addEffect(x, y, power = 1) {
+
+    /* Prevent excessive overlapping ripples */
+
+    for (const e of effects) {
+
+        const dx = x - e.x;
+        const dy = y - e.y;
+
+        const distance =
+            Math.sqrt(
+                dx * dx +
+                dy * dy
+            );
+
+        if (distance < MIN_EFFECT_DISTANCE) {
+            return;
+        }
+    }
+
+
+    effects.push({
+        x: x,
+        y: y,
+
+        radius: 5,
+
+        maxRadius: 90 + power * 70,
+
+        /* Slower expansion */
+        speed: 1.2 + power * 0.7,
+
+        alpha: 1,
+
+        power: power,
+
+        wobble: Math.random() * Math.PI * 2,
+
+        wobbleSpeed: 0.03 + Math.random() * 0.03,
+
+        /* Time-based lifetime */
+        startTime: performance.now()
+    });
+}
+
+
+/* =========================================
+   UPDATE EFFECTS
+========================================= */
+
+function updateEffects() {
+
+    const now = performance.now();
+
+    for (let i = effects.length - 1; i >= 0; i--) {
+
+        const e = effects[i];
+
+        const elapsed =
+            now - e.startTime;
+
+        const progress =
+            Math.min(
+                1,
+                elapsed / time
+            );
+
+
+        /* Calculate ripple radius from time */
+
+        e.radius =
+            5 +
+            (e.maxRadius - 5) *
+            progress;
+
+
+        /* Fade based on the same 3 second lifetime */
+
+        e.alpha =
+            1 - progress;
+
+
+        e.wobble =
+            e.wobble +
+            e.wobbleSpeed;
+
+
+        if (progress >= 1) {
+
+            effects.splice(i, 1);
+
+        }
+    }
+}
+
+
+/* =========================================
+   DRAW EFFECTS
+========================================= */
+
+function drawEffects() {
+
+    ctx.save();
+
+    ctx.globalCompositeOperation = "screen";
+
+    for (const e of effects) {
+
+        const fade =
+            Math.max(
+                0,
+                Math.min(
+                    1,
+                    1 - e.radius / e.maxRadius
+                )
+            );
+
+        const alpha =
+            e.alpha * fade * e.power;
+
+
+        /* Large soft disturbance */
+
+        const glow =
+            ctx.createRadialGradient(
+                e.x,
+                e.y,
+                Math.max(0, e.radius - 35),
+
+                e.x,
+                e.y,
+                e.radius + 35
+            );
+
+        glow.addColorStop(
+            0,
+            "rgba(180,250,255,0)"
+        );
+
+        glow.addColorStop(
+            0.45,
+            `rgba(90,220,255,${0.18 * alpha})`
+        );
+
+        glow.addColorStop(
+            0.7,
+            `rgba(120,235,255,${0.10 * alpha})`
+        );
+
+        glow.addColorStop(
+            1,
+            "rgba(80,210,255,0)"
+        );
+
+
+        ctx.fillStyle = glow;
+
+        ctx.beginPath();
+
+        ctx.arc(
+            e.x,
+            e.y,
+            e.radius + 35,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fill();
+
+
+        /* Main ripple */
+
+        drawOrganicRing(
+            e,
+            e.radius,
+            3.5,
+            0.65 * alpha
+        );
+
+
+        /* Secondary ripple */
+
+        drawOrganicRing(
+            e,
+            e.radius + 13,
+            1.5,
+            0.28 * alpha
+        );
+    }
+
+    ctx.restore();
+}
+
+
+/* =========================================
+   ORGANIC RIPPLES
+========================================= */
+
+function drawOrganicRing(
+    e,
+    radius,
+    thickness,
+    alpha
+) {
+
+    ctx.beginPath();
+
+    const points = 80;
+
+    for (let i = 0; i <= points; i++) {
+
+        const angle =
+            (i / points) * Math.PI * 2;
+
+        const wobble =
+            Math.sin(
+                angle * 5 +
+                e.wobble
+            ) * 2.5;
+
+        const wobble2 =
+            Math.sin(
+                angle * 9 -
+                e.wobble * 0.7
+            ) * 1.3;
+
+        const r =
+            radius +
+            wobble +
+            wobble2;
+
+        const x =
+            e.x +
+            Math.cos(angle) * r;
+
+        const y =
+            e.y +
+            Math.sin(angle) * r;
+
+        if (i === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
+        }
+    }
+
+    ctx.closePath();
+
+    ctx.lineWidth = thickness;
+
+    ctx.strokeStyle =
+        `rgba(170,245,255,${alpha})`;
+
+    ctx.stroke();
+}
+
+
+/* =========================================
+   FOLLOWING FINGER EFFECT
+========================================= */
+
+function drawFingerEffect() {
+
+    if (!pointer.down) {
+        return;
+    }
+
+    ctx.save();
+
+    ctx.globalCompositeOperation = "screen";
+
+
+    /* Outer glow */
+
+    const glow =
+        ctx.createRadialGradient(
+            pointer.x,
+            pointer.y,
+            0,
+
+            pointer.x,
+            pointer.y,
+            95
+        );
+
+    glow.addColorStop(
+        0,
+        "rgba(170,250,255,0.28)"
+    );
+
+    glow.addColorStop(
+        0.25,
+        "rgba(100,225,255,0.18)"
+    );
+
+    glow.addColorStop(
+        0.55,
+        "rgba(70,205,255,0.08)"
+    );
+
+    glow.addColorStop(
+        1,
+        "rgba(70,205,255,0)"
+    );
+
+
+    ctx.fillStyle = glow;
+
+    ctx.beginPath();
+
+    ctx.arc(
+        pointer.x,
+        pointer.y,
+        95,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+
+
+    /* Bright center reflection */
+
+    const highlight =
+        ctx.createRadialGradient(
+            pointer.x - 12,
+            pointer.y - 12,
+            0,
+
+            pointer.x,
+            pointer.y,
+            48
+        );
+
+    highlight.addColorStop(
+        0,
+        "rgba(220,255,255,0.30)"
+    );
+
+    highlight.addColorStop(
+        0.3,
+        "rgba(130,235,255,0.15)"
+    );
+
+    highlight.addColorStop(
+        1,
+        "rgba(80,210,255,0)"
+    );
+
+
+    ctx.fillStyle = highlight;
+
+    ctx.beginPath();
+
+    ctx.arc(
+        pointer.x,
+        pointer.y,
+        48,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+
+
+    ctx.restore();
+}
+
+
+/* =========================================
+   POINTER DOWN
+========================================= */
+
+canvas.addEventListener(
+    "pointerdown",
+    function(event) {
+
+        pointer.down = true;
+
+        pointer.x = event.clientX;
+        pointer.y = event.clientY;
+
+        lastX = pointer.x;
+        lastY = pointer.y;
+
+        addEffect(
+            pointer.x,
+            pointer.y,
+            1
+        );
+
+        canvas.setPointerCapture(
+            event.pointerId
+        );
+    }
+);
+
+
+/* =========================================
+   POINTER MOVE
+========================================= */
+
+canvas.addEventListener(
+    "pointermove",
+    function(event) {
+
+        const x = event.clientX;
+        const y = event.clientY;
+
+        if (!pointer.down) {
+            return;
+        }
+
+        const dx = x - lastX;
+        const dy = y - lastY;
+
+        const distance =
+            Math.sqrt(
+                dx * dx +
+                dy * dy
+            );
+
+        const steps =
+            Math.max(
+                1,
+                Math.ceil(distance / 8)
+            );
+
+
+        for (
+            let i = 1;
+            i <= steps;
+            i++
+        ) {
+
+            const t =
+                i / steps;
+
+            const px =
+                lastX +
+                dx * t;
+
+            const py =
+                lastY +
+                dy * t;
+
+            addEffect(
+                px,
+                py,
+                Math.min(
+                    1,
+                    0.35 +
+                    distance / 25
+                )
+            );
+        }
+
+
+        pointer.x = x;
+        pointer.y = y;
+
+        lastX = x;
+        lastY = y;
+    }
+);
+
+
+/* =========================================
+   POINTER UP
+========================================= */
+
+canvas.addEventListener(
+    "pointerup",
+    function(event) {
+
+        pointer.down = false;
+
+        addEffect(
+            pointer.x,
+            pointer.y,
+            1.2
+        );
+
+        try {
+
+            canvas.releasePointerCapture(
+                event.pointerId
+            );
+
+        } catch {}
+    }
+);
+
+
+canvas.addEventListener(
+    "pointercancel",
+    function() {
+
+        pointer.down = false;
+    }
+);
+
+
+/* =========================================
+   RESIZE
+========================================= */
+
+function resize() {
+
+    width = window.innerWidth;
+    height = window.innerHeight;
+
+    canvas.width = width;
+    canvas.height = height;
+}
+
+
+window.addEventListener(
+    "resize",
+    resize
+);
+
+
+/* =========================================
+   WATER BACKGROUND
+========================================= */
+
+function drawWater() {
+
+    const gradient =
+        ctx.createLinearGradient(
+            0,
+            0,
+            0,
+            height
+        );
+
+    gradient.addColorStop(
+        0,
+        "#0874b8"
+    );
+
+    gradient.addColorStop(
+        0.5,
+        "#075c9d"
+    );
+
+    gradient.addColorStop(
+        1,
+        "#03477e"
+    );
+
+
+    ctx.fillStyle = gradient;
+
+    ctx.fillRect(
+        0,
+        0,
+        width,
+        height
+    );
+}
+
+
+/* =========================================
+   ANIMATION
+========================================= */
+
+function animate() {
+
+    drawWater();
+
+    updateEffects();
+
+    drawEffects();
+
+    drawFingerEffect();
+
+    requestAnimationFrame(
+        animate
+    );
+}
+
+
+resize();
+
+animate();
+
+</script>
+
+</body>
+</html>
