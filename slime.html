@@ -104,9 +104,6 @@ function resize() {
     canvas.width = W;
     canvas.height = H;
 
-    canvas.style.width = "100vw";
-    canvas.style.height = "100vh";
-
     gridW = Math.ceil(W / CELL_SIZE) + 1;
     gridH = Math.ceil(H / CELL_SIZE) + 1;
 
@@ -200,15 +197,8 @@ function disturb() {
         return;
     }
 
-    /*
-        Interaction radius:
-        10 simulation cells.
-
-        Each cell is 6px,
-        so the effect reaches
-        roughly 60px around
-        the finger.
-    */
+    // 10 simulation cells.
+    // Each cell is 6px.
     const radius = 10;
 
     const centerX =
@@ -240,7 +230,6 @@ function disturb() {
     const speed = Math.sqrt(
         pointer.velocityX *
         pointer.velocityX +
-
         pointer.velocityY *
         pointer.velocityY
     );
@@ -289,9 +278,19 @@ function disturb() {
             const i =
                 index(x, y);
 
-            depth[i] -=
-                amount * 1.15;
+            /*
+                Push the slime downward.
 
+                The stronger deformation makes
+                the finger visibly sink into it.
+            */
+            depth[i] -=
+                amount * 2.5;
+
+            /*
+                Drag the surrounding slime
+                in the direction of the finger.
+            */
             if (speed > 0.5) {
                 const direction =
                     (
@@ -340,6 +339,11 @@ function updateDepth() {
             const down =
                 depth[i + gridW];
 
+            /*
+                Neighbor interaction makes
+                the deformation spread through
+                the surrounding slime.
+            */
             const spread =
                 left +
                 right +
@@ -350,14 +354,52 @@ function updateDepth() {
             let velocity =
                 spread * 0.27;
 
-            velocity +=
-                -center * 0.014;
+            /*
+                Spring force.
 
-            velocity *= 0.91;
+                This slowly pulls the slime
+                back toward its original shape.
+            */
+            velocity +=
+                -center * 0.009;
+
+            /*
+                Damping controls how slowly
+                the slime settles.
+            */
+            velocity *= 0.94;
 
             nextDepth[i] =
                 center + velocity;
         }
+    }
+
+    /*
+        Keep the outer edge stable.
+    */
+    for (
+        let x = 0;
+        x < gridW;
+        x++
+    ) {
+        nextDepth[index(x, 0)] = 0;
+        nextDepth[
+            index(x, gridH - 1)
+        ] = 0;
+    }
+
+    for (
+        let y = 0;
+        y < gridH;
+        y++
+    ) {
+        nextDepth[
+            index(0, y)
+        ] = 0;
+
+        nextDepth[
+            index(gridW - 1, y)
+        ] = 0;
     }
 
     const temp = depth;
@@ -470,6 +512,10 @@ function render() {
             const z =
                 sampleDepth(x, y);
 
+            /*
+                Sample the surrounding depth
+                to calculate the surface normal.
+            */
             const zLeft =
                 sampleDepth(
                     x - 2,
@@ -521,6 +567,9 @@ function render() {
             ny /= normalLength;
             nz /= normalLength;
 
+            /*
+                Light direction.
+            */
             let lx =
                 lightX - x;
 
@@ -541,6 +590,9 @@ function render() {
             ly /= lightLength;
             lz /= lightLength;
 
+            /*
+                Diffuse lighting.
+            */
             const diffuse =
                 Math.max(
                     0,
@@ -549,6 +601,9 @@ function render() {
                     nz * lz
                 );
 
+            /*
+                Specular highlight.
+            */
             const hx = lx;
             const hy = ly;
             const hz = lz + 1;
@@ -585,6 +640,11 @@ function render() {
                 diffuse +
                 specular;
 
+            /*
+                Depth affects brightness,
+                giving the deformation more
+                visual depth.
+            */
             brightness +=
                 clamp(
                     z * 0.008,
