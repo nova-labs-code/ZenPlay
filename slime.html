@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+        content="width=device-width,
+        initial-scale=1.0,
+        maximum-scale=1.0,
+        user-scalable=no,
+        viewport-fit=cover">
+
+    <title>Slime</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #06100c;
+        }
+
+        body {
+            position: fixed;
+            inset: 0;
+        }
+
+        canvas {
+            position: fixed;
+            inset: 0;
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            touch-action: none;
+        }
+
+        #slimeOverlay {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            opacity: 0.6;
+            pointer-events: none;
+            z-index: 2;
+        }
+    </style>
+</head>
+
+<body>
+
+<canvas id="canvas"></canvas>
+
+<img
+    id="slimeOverlay"
+    src="Slime.png"
+    alt=""
+>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d", {
+    alpha: false
+});
+
+const CELL_SIZE = 6;
+
+let W = 0;
+let H = 0;
+
+let gridW = 0;
+let gridH = 0;
+
+let depth;
+let nextDepth;
+
+let imageData;
+let pixels;
+
+const pointer = {
+    x: 0,
+    y: 0,
+
+    oldX: 0,
+    oldY: 0,
+
+    velocityX: 0,
+    velocityY: 0,
+
+    down: false
+};
+
+function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+
+    canvas.width = W;
+    canvas.height = H;
+
+    canvas.style.width = "100vw";
+    canvas.style.height = "100vh";
+
+    gridW = Math.ceil(W / CELL_SIZE) + 1;
+    gridH = Math.ceil(H / CELL_SIZE) + 1;
+
+    depth = new Float32Array(
+        gridW * gridH
+    );
+
+    nextDepth = new Float32Array(
+        gridW * gridH
+    );
+
+    imageData = ctx.createImageData(
+        W,
+        H
+    );
+
+    pixels = imageData.data;
+}
+
+resize();
+
+window.addEventListener(
+    "resize",
+    resize
+);
+
+canvas.addEventListener(
+    "pointerdown",
+    e => {
+        pointer.x = e.clientX;
+        pointer.y = e.clientY;
+
+        pointer.oldX = pointer.x;
+        pointer.oldY = pointer.y;
+
+        pointer.velocityX = 0;
+        pointer.velocityY = 0;
+
+        pointer.down = true;
+
+        canvas.setPointerCapture(
+            e.pointerId
+        );
+    }
+);
+
+canvas.addEventListener(
+    "pointermove",
+    e => {
+        pointer.oldX = pointer.x;
+        pointer.oldY = pointer.y;
+
+        pointer.x = e.clientX;
+        pointer.y = e.clientY;
+
+        pointer.velocityX =
+            pointer.x - pointer.oldX;
+
+        pointer.velocityY =
+            pointer.y - pointer.oldY;
+    }
+);
+
+canvas.addEventListener(
+    "pointerup",
+    () => {
+        pointer.down = false;
+    }
+);
+
+canvas.addEventListener(
+    "pointercancel",
+    () => {
+        pointer.down = false;
+    }
+);
+
+function index(x, y) {
+    return x + y * gridW;
+}
+
+function clamp(value, min, max) {
+    return Math.max(
+        min,
+        Math.min(max, value)
+    );
+}
+
+function disturb() {
+    if (!pointer.down) {
+        return;
+    }
+
+    /*
+        Interaction radius:
+        10 simulation cells.
+
+        Each cell is 6px,
+        so the effect reaches
+        roughly 60px around
+        the finger.
+    */
+    const radius = 10;
+
+    const centerX =
+        pointer.x / CELL_SIZE;
+
+    const centerY =
+        pointer.y / CELL_SIZE;
+
+    const minX = Math.max(
+        1,
+        Math.floor(centerX - radius)
+    );
+
+    const maxX = Math.min(
+        gridW - 2,
+        Math.ceil(centerX + radius)
+    );
+
+    const minY = Math.max(
+        1,
+        Math.floor(centerY - radius)
+    );
+
+    const maxY = Math.min(
+        gridH - 2,
+        Math.ceil(centerY + radius)
+    );
+
+    const speed = Math.sqrt(
+        pointer.velocityX *
+        pointer.velocityX +
+
+        pointer.velocityY *
+        pointer.velocityY
+    );
+
+    const pressure =
+        0.9 +
+        Math.min(
+            speed * 0.035,
+            2.5
+        );
+
+    for (
+        let y = minY;
+        y <= maxY;
+        y++
+    ) {
+        for (
+            let x = minX;
+            x <= maxX;
+            x++
+        ) {
+            const dx =
+                x - centerX;
+
+            const dy =
+                y - centerY;
+
+            const distance =
+                Math.sqrt(
+                    dx * dx +
+                    dy * dy
+                );
+
+            if (distance > radius) {
+                continue;
+            }
+
+            const influence =
+                1 - distance / radius;
+
+            const amount =
+                influence *
+                influence *
+                pressure;
+
+            const i =
+                index(x, y);
+
+            depth[i] -=
+                amount * 1.15;
+
+            if (speed > 0.5) {
+                const direction =
+                    (
+                        dx * pointer.velocityX +
+                        dy * pointer.velocityY
+                    ) /
+                    (distance + 1);
+
+                depth[i] +=
+                    direction *
+                    influence *
+                    0.025;
+            }
+        }
+    }
+}
+
+function updateDepth() {
+    disturb();
+
+    for (
+        let y = 1;
+        y < gridH - 1;
+        y++
+    ) {
+        for (
+            let x = 1;
+            x < gridW - 1;
+            x++
+        ) {
+            const i =
+                index(x, y);
+
+            const center =
+                depth[i];
+
+            const left =
+                depth[i - 1];
+
+            const right =
+                depth[i + 1];
+
+            const up =
+                depth[i - gridW];
+
+            const down =
+                depth[i + gridW];
+
+            const spread =
+                left +
+                right +
+                up +
+                down -
+                center * 4;
+
+            let velocity =
+                spread * 0.27;
+
+            velocity +=
+                -center * 0.014;
+
+            velocity *= 0.91;
+
+            nextDepth[i] =
+                center + velocity;
+        }
+    }
+
+    const temp = depth;
+
+    depth = nextDepth;
+    nextDepth = temp;
+}
+
+function sampleDepth(px, py) {
+    const gx =
+        px / CELL_SIZE;
+
+    const gy =
+        py / CELL_SIZE;
+
+    const x =
+        Math.floor(gx);
+
+    const y =
+        Math.floor(gy);
+
+    const fx =
+        gx - x;
+
+    const fy =
+        gy - y;
+
+    const x0 =
+        clamp(
+            x,
+            0,
+            gridW - 1
+        );
+
+    const x1 =
+        clamp(
+            x + 1,
+            0,
+            gridW - 1
+        );
+
+    const y0 =
+        clamp(
+            y,
+            0,
+            gridH - 1
+        );
+
+    const y1 =
+        clamp(
+            y + 1,
+            0,
+            gridH - 1
+        );
+
+    const a =
+        depth[
+            index(x0, y0)
+        ];
+
+    const b =
+        depth[
+            index(x1, y0)
+        ];
+
+    const c =
+        depth[
+            index(x0, y1)
+        ];
+
+    const d =
+        depth[
+            index(x1, y1)
+        ];
+
+    const top =
+        a + (b - a) * fx;
+
+    const bottom =
+        c + (d - c) * fx;
+
+    return (
+        top +
+        (bottom - top) * fy
+    );
+}
+
+function render() {
+    const lightX =
+        W * 0.28;
+
+    const lightY =
+        H * 0.18;
+
+    const lightZ = 300;
+
+    for (
+        let y = 0;
+        y < H;
+        y++
+    ) {
+        for (
+            let x = 0;
+            x < W;
+            x++
+        ) {
+            const pixelIndex =
+                y * W + x;
+
+            const z =
+                sampleDepth(x, y);
+
+            const zLeft =
+                sampleDepth(
+                    x - 2,
+                    y
+                );
+
+            const zRight =
+                sampleDepth(
+                    x + 2,
+                    y
+                );
+
+            const zUp =
+                sampleDepth(
+                    x,
+                    y - 2
+                );
+
+            const zDown =
+                sampleDepth(
+                    x,
+                    y + 2
+                );
+
+            const slopeX =
+                (zRight - zLeft) *
+                0.5;
+
+            const slopeY =
+                (zDown - zUp) *
+                0.5;
+
+            let nx =
+                -slopeX;
+
+            let ny =
+                -slopeY;
+
+            let nz = 3.2;
+
+            const normalLength =
+                Math.sqrt(
+                    nx * nx +
+                    ny * ny +
+                    nz * nz
+                );
+
+            nx /= normalLength;
+            ny /= normalLength;
+            nz /= normalLength;
+
+            let lx =
+                lightX - x;
+
+            let ly =
+                lightY - y;
+
+            let lz =
+                lightZ;
+
+            const lightLength =
+                Math.sqrt(
+                    lx * lx +
+                    ly * ly +
+                    lz * lz
+                );
+
+            lx /= lightLength;
+            ly /= lightLength;
+            lz /= lightLength;
+
+            const diffuse =
+                Math.max(
+                    0,
+                    nx * lx +
+                    ny * ly +
+                    nz * lz
+                );
+
+            const hx = lx;
+            const hy = ly;
+            const hz = lz + 1;
+
+            const halfLength =
+                Math.sqrt(
+                    hx * hx +
+                    hy * hy +
+                    hz * hz
+                );
+
+            const halfX =
+                hx / halfLength;
+
+            const halfY =
+                hy / halfLength;
+
+            const halfZ =
+                hz / halfLength;
+
+            const specular =
+                Math.pow(
+                    Math.max(
+                        0,
+                        nx * halfX +
+                        ny * halfY +
+                        nz * halfZ
+                    ),
+                    28
+                ) * 0.7;
+
+            let brightness =
+                0.27 +
+                diffuse +
+                specular;
+
+            brightness +=
+                clamp(
+                    z * 0.008,
+                    -0.22,
+                    0.18
+                );
+
+            brightness =
+                clamp(
+                    brightness,
+                    0.08,
+                    1.6
+                );
+
+            const r =
+                clamp(
+                    Math.round(
+                        10 * brightness
+                    ),
+                    0,
+                    255
+                );
+
+            const g =
+                clamp(
+                    Math.round(
+                        150 * brightness
+                    ),
+                    0,
+                    255
+                );
+
+            const b =
+                clamp(
+                    Math.round(
+                        68 * brightness
+                    ),
+                    0,
+                    255
+                );
+
+            const p =
+                pixelIndex * 4;
+
+            pixels[p] = r;
+            pixels[p + 1] = g;
+            pixels[p + 2] = b;
+            pixels[p + 3] = 255;
+        }
+    }
+
+    ctx.putImageData(
+        imageData,
+        0,
+        0
+    );
+}
+
+function gloss() {
+    ctx.globalCompositeOperation =
+        "screen";
+
+    const gradient =
+        ctx.createRadialGradient(
+            W * 0.28,
+            H * 0.18,
+            0,
+            W * 0.28,
+            H * 0.18,
+            Math.max(W, H) * 0.7
+        );
+
+    gradient.addColorStop(
+        0,
+        "rgba(230,255,235,0.07)"
+    );
+
+    gradient.addColorStop(
+        0.3,
+        "rgba(180,255,205,0.025)"
+    );
+
+    gradient.addColorStop(
+        1,
+        "rgba(0,0,0,0)"
+    );
+
+    ctx.fillStyle =
+        gradient;
+
+    ctx.fillRect(
+        0,
+        0,
+        W,
+        H
+    );
+
+    ctx.globalCompositeOperation =
+        "source-over";
+}
+
+function animate() {
+    pointer.velocityX *= 0.72;
+    pointer.velocityY *= 0.72;
+
+    updateDepth();
+    render();
+    gloss();
+
+    requestAnimationFrame(
+        animate
+    );
+}
+
+animate();
+</script>
+
+</body>
+</html>
