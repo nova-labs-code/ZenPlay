@@ -1,0 +1,24 @@
+{
+  "games": [
+    {
+      "id": "ripples",
+      "name": "Ripples",
+      "file": "ripples.html",
+      "description": "Create smooth, interactive ripples across the water.",
+      "category": "Satisfying",
+      "type": "Interactive",
+      "controls": "Mouse or touch",
+      "status": "available"
+    },
+    {
+      "id": "fluid",
+      "name": "Fluid",
+      "file": "fluid.html",
+      "description": "Interact with a smooth fluid simulation and watch it flow.",
+      "category": "Satisfying",
+      "type": "Simulation",
+      "controls": "Mouse or touch",
+      "status": "available"
+    }
+  ]
+}
