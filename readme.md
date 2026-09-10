@@ -31,6 +31,9 @@ Pull glowing particles together with a magnetic touch.
 ### Smoke
 Create soft, rising smoke with your touch or mouse. The smoke naturally rises, expands, overlaps, and fades away.
 
+### Paint
+Paint freely with simple, colorful strokes using your mouse or touch. Create overlapping layers and clear the canvas whenever you want.
+
 ## Features
 
 - Simple, easy-to-use interactions
