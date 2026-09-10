@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+        content="width=device-width,
+        initial-scale=1.0,
+        maximum-scale=1.0,
+        user-scalable=no,
+        viewport-fit=cover">
+
+    <title>Paint</title>
+
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            touch-action: none;
+        }
+
+        #clear {
+            position: fixed;
+            right: 16px;
+            bottom: 16px;
+
+            border: 0;
+            border-radius: 10px;
+
+            padding: 10px 15px;
+
+            color: #fff;
+            background: #292929;
+
+            font: 14px Arial, sans-serif;
+
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+
+            z-index: 10;
+        }
+
+        #clear:active {
+            transform: scale(0.96);
+        }
+    </style>
+</head>
+
+<body>
+
+<canvas id="canvas"></canvas>
+
+<button id="clear">Clear</button>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+const clearButton = document.getElementById("clear");
+
+let width = 0;
+let height = 0;
+let dpr = 1;
+
+const paint = [];
+const grid = new Map();
+
+const GRID_SIZE = 80;
+
+const colors = [
+    "#ff4d6d",
+    "#ff9f43",
+    "#ffe14a",
+    "#4ade80",
+    "#38bdf8",
+    "#6366f1",
+    "#a855f7",
+    "#ec4899"
+];
+
+let colorIndex = 0;
+let nextId = 0;
+
+const pointer = {
+    active: false,
+    x: 0,
+    y: 0,
+    lastX: 0,
+    lastY: 0
+};
+
+
+/* =========================
+   CANVAS
+========================= */
+
+function resize() {
+    width = window.innerWidth;
+    height = window.innerHeight;
+
+    dpr = Math.min(
+        window.devicePixelRatio || 1,
+        2
+    );
+
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+
+    canvas.style.width = width + "px";
+    canvas.style.height = height + "px";
+
+    ctx.setTransform(
+        dpr,
+        0,
+        0,
+        dpr,
+        0,
+        0
+    );
+
+    render();
+}
+
+
+/* =========================
+   GRID
+========================= */
+
+function cellX(x) {
+    return Math.floor(x / GRID_SIZE);
+}
+
+function cellY(y) {
+    return Math.floor(y / GRID_SIZE);
+}
+
+function addToGrid(p) {
+    const minX = cellX(p.x - p.radius);
+    const maxX = cellX(p.x + p.radius);
+    const minY = cellY(p.y - p.radius);
+    const maxY = cellY(p.y + p.radius);
+
+    for (let x = minX; x <= maxX; x++) {
+        for (let y = minY; y <= maxY; y++) {
+
+            const key = x + "," + y;
+
+            let cell = grid.get(key);
+
+            if (!cell) {
+                cell = [];
+                grid.set(key, cell);
+            }
+
+            cell.push(p);
+        }
+    }
+}
+
+function removeFromGrid(p) {
+    const minX = cellX(p.x - p.radius);
+    const maxX = cellX(p.x + p.radius);
+    const minY = cellY(p.y - p.radius);
+    const maxY = cellY(p.y + p.radius);
+
+    for (let x = minX; x <= maxX; x++) {
+        for (let y = minY; y <= maxY; y++) {
+
+            const key = x + "," + y;
+            const cell = grid.get(key);
+
+            if (!cell) {
+                continue;
+            }
+
+            const index = cell.indexOf(p);
+
+            if (index !== -1) {
+                cell.splice(index, 1);
+            }
+
+            if (cell.length === 0) {
+                grid.delete(key);
+            }
+        }
+    }
+}
+
+function getNearby(p) {
+    const nearby = new Set();
+
+    const minX = cellX(p.x - p.radius);
+    const maxX = cellX(p.x + p.radius);
+    const minY = cellY(p.y - p.radius);
+    const maxY = cellY(p.y + p.radius);
+
+    for (let x = minX; x <= maxX; x++) {
+        for (let y = minY; y <= maxY; y++) {
+
+            const cell =
+                grid.get(x + "," + y);
+
+            if (!cell) {
+                continue;
+            }
+
+            for (const item of cell) {
+                nearby.add(item);
+            }
+        }
+    }
+
+    return nearby;
+}
+
+
+/* =========================
+   COVERAGE
+========================= */
+
+function pointCovered(x, y, candidates) {
+    for (const p of candidates) {
+
+        const dx = x - p.x;
+        const dy = y - p.y;
+
+        if (
+            dx * dx +
+            dy * dy <=
+            p.radius * p.radius
+        ) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function fullyCovered(oldPaint) {
+    const nearby = getNearby(oldPaint);
+    const newer = [];
+
+    for (const p of nearby) {
+
+        if (
+            p === oldPaint ||
+            p.id <= oldPaint.id
+        ) {
+            continue;
+        }
+
+        const dx =
+            p.x - oldPaint.x;
+
+        const dy =
+            p.y - oldPaint.y;
+
+        const distanceSquared =
+            dx * dx +
+            dy * dy;
+
+        const maxDistance =
+            oldPaint.radius +
+            p.radius;
+
+        if (
+            distanceSquared <=
+            maxDistance * maxDistance
+        ) {
+            newer.push(p);
+        }
+    }
+
+    if (newer.length === 0) {
+        return false;
+    }
+
+    if (
+        !pointCovered(
+            oldPaint.x,
+            oldPaint.y,
+            newer
+        )
+    ) {
+        return false;
+    }
+
+    const samples = 28;
+
+    for (
+        let ring = 0.2;
+        ring <= 1;
+        ring += 0.2
+    ) {
+
+        for (
+            let i = 0;
+            i < samples;
+            i++
+        ) {
+
+            const angle =
+                Math.PI * 2 *
+                i / samples;
+
+            const x =
+                oldPaint.x +
+                Math.cos(angle) *
+                oldPaint.radius *
+                ring;
+
+            const y =
+                oldPaint.y +
+                Math.sin(angle) *
+                oldPaint.radius *
+                ring;
+
+            if (
+                !pointCovered(
+                    x,
+                    y,
+                    newer
+                )
+            ) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+
+/* =========================
+   DELETE PAINT
+========================= */
+
+function deletePaint(p) {
+    removeFromGrid(p);
+
+    const index =
+        paint.indexOf(p);
+
+    if (index !== -1) {
+        paint.splice(index, 1);
+    }
+}
+
+
+/* =========================
+   CREATE PAINT
+========================= */
+
+function createPaint(x, y) {
+
+    const p = {
+        id: nextId++,
+        x: x,
+        y: y,
+
+        radius:
+            12 +
+            Math.random() * 3,
+
+        color:
+            colors[colorIndex]
+    };
+
+    paint.push(p);
+
+    addToGrid(p);
+
+    const nearby = getNearby(p);
+
+    let deleted = false;
+
+    for (const oldPaint of nearby) {
+
+        if (
+            oldPaint === p ||
+            oldPaint.id >= p.id
+        ) {
+            continue;
+        }
+
+        if (
+            fullyCovered(oldPaint)
+        ) {
+            deletePaint(oldPaint);
+            deleted = true;
+        }
+    }
+
+    if (deleted) {
+        render();
+    } else {
+        drawPaint(p);
+    }
+}
+
+
+/* =========================
+   STROKE
+========================= */
+
+function createStroke(
+    x1,
+    y1,
+    x2,
+    y2
+) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+
+    const distance =
+        Math.sqrt(
+            dx * dx +
+            dy * dy
+        );
+
+    const steps =
+        Math.max(
+            1,
+            Math.ceil(
+                distance / 8
+            )
+        );
+
+    for (
+        let i = 1;
+        i <= steps;
+        i++
+    ) {
+
+        const t = i / steps;
+
+        createPaint(
+            x1 + dx * t,
+            y1 + dy * t
+        );
+    }
+}
+
+
+/* =========================
+   DRAW
+========================= */
+
+function drawPaint(p) {
+
+    ctx.fillStyle = p.color;
+
+    ctx.beginPath();
+
+    ctx.arc(
+        p.x,
+        p.y,
+        p.radius,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+}
+
+function render() {
+
+    ctx.clearRect(
+        0,
+        0,
+        width,
+        height
+    );
+
+    for (const p of paint) {
+        drawPaint(p);
+    }
+}
+
+
+/* =========================
+   POINTER
+========================= */
+
+function pointerDown(x, y) {
+
+    pointer.active = true;
+
+    pointer.x = x;
+    pointer.y = y;
+
+    pointer.lastX = x;
+    pointer.lastY = y;
+
+    createPaint(x, y);
+}
+
+function pointerMove(x, y) {
+
+    if (!pointer.active) {
+        return;
+    }
+
+    pointer.lastX = pointer.x;
+    pointer.lastY = pointer.y;
+
+    pointer.x = x;
+    pointer.y = y;
+
+    createStroke(
+        pointer.lastX,
+        pointer.lastY,
+        pointer.x,
+        pointer.y
+    );
+}
+
+function pointerUp() {
+
+    pointer.active = false;
+
+    colorIndex =
+        (colorIndex + 1) %
+        colors.length;
+}
+
+
+/* =========================
+   EVENTS
+========================= */
+
+canvas.addEventListener(
+    "pointerdown",
+    event => {
+
+        pointerDown(
+            event.clientX,
+            event.clientY
+        );
+
+        canvas.setPointerCapture(
+            event.pointerId
+        );
+    }
+);
+
+canvas.addEventListener(
+    "pointermove",
+    event => {
+
+        pointerMove(
+            event.clientX,
+            event.clientY
+        );
+    }
+);
+
+canvas.addEventListener(
+    "pointerup",
+    event => {
+
+        pointerUp();
+
+        if (
+            canvas.hasPointerCapture(
+                event.pointerId
+            )
+        ) {
+            canvas.releasePointerCapture(
+                event.pointerId
+            );
+        }
+    }
+);
+
+canvas.addEventListener(
+    "pointercancel",
+    pointerUp
+);
+
+
+/* =========================
+   CLEAR
+========================= */
+
+clearButton.addEventListener(
+    "click",
+    () => {
+
+        paint.length = 0;
+        grid.clear();
+
+        ctx.clearRect(
+            0,
+            0,
+            width,
+            height
+        );
+    }
+);
+
+
+/* =========================
+   START
+========================= */
+
+window.addEventListener(
+    "resize",
+    resize
+);
+
+resize();
+</script>
+
+</body>
+</html>
