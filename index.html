@@ -197,9 +197,6 @@
 
 <script>
 
-const container =
-    document.querySelector(".container");
-
 const gamesContainer =
     document.getElementById("games");
 
@@ -208,6 +205,8 @@ const gameOverlay =
 
 const gameFrame =
     document.getElementById("gameFrame");
+
+let savedScrollPosition = 0;
 
 
 async function loadGames() {
@@ -268,15 +267,19 @@ async function loadGames() {
 
 function openGame(file) {
 
-    /* Remove the games UI */
+    /* Save the exact scroll position */
+
+    savedScrollPosition = window.scrollY;
+
+    /* Hide the games container */
 
     gamesContainer.style.display = "none";
 
-    /* Make the page background black */
+    /* Make the page black */
 
     document.body.classList.add("playing");
 
-    /* Show game */
+    /* Show the game */
 
     gameOverlay.style.display = "block";
 
@@ -284,7 +287,7 @@ function openGame(file) {
 
     document.body.style.overflow = "hidden";
 
-    /* Load game */
+    /* Load the game */
 
     gameFrame.src = file;
 }
@@ -296,22 +299,34 @@ function closeGame() {
 
     gameFrame.src = "";
 
-    /* Hide game */
+    /* Hide the game */
 
     gameOverlay.style.display = "none";
 
-    /* Restore games UI */
+    /* Restore the games container */
 
     gamesContainer.style.display = "";
 
-    /* Restore background */
+    /* Restore the normal background */
 
     document.body.classList.remove("playing");
 
-    /* Restore page */
+    /* Restore scrolling */
 
     document.body.style.overflow = "";
 
+    /*
+        Restore the exact position
+        the user was at before opening
+        the game.
+    */
+
+    requestAnimationFrame(() => {
+        window.scrollTo(
+            0,
+            savedScrollPosition
+        );
+    });
 }
 
 
