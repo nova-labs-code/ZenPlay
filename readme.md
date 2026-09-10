@@ -4,7 +4,7 @@ A collection of simple, satisfying games and interactive experiences designed to
 
 ## About
 
-ZenPlay is a small collection of browser-based experiences focused on simple interactions and satisfying visual effects.
+ZenPlay is A collection of simple, satisfying games and interactive experiences designed to be relaxing, fun, and easy to pick up.
 
 Each game is designed to work with **mouse or touch controls**, making ZenPlay playable on both desktop and mobile devices.
 
@@ -27,6 +27,9 @@ Launch colorful fireworks and watch them burst with realistic trails, flashes, a
 
 ### Magnet
 Pull glowing particles together with a magnetic touch.
+
+### Smoke
+Create soft, rising smoke with your touch or mouse. The smoke naturally rises, expands, overlaps, and fades away.
 
 ## Features
 
