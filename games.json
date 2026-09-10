@@ -49,6 +49,16 @@
       "type": "Interactive",
       "controls": "Mouse or touch",
       "status": "available"
-    }
+    },
+    {
+  "id": "magnet",
+  "name": "Magnet",
+  "file": "magnet.html",
+  "description": "Pull glowing particles together with a magnetic touch.",
+  "category": "Satisfying",
+  "type": "Interactive",
+  "controls": "Mouse or touch",
+  "status": "available"
+}
   ]
 }
