@@ -88,35 +88,14 @@
             color: #6f7688;
         }
 
-
-        /* =========================================
-           GAME OVERLAY
-           ========================================= */
+        /* Game overlay */
 
         #gameOverlay {
             position: fixed;
+            inset: 0;
 
-            /*
-             * Extend beyond the normal viewport so the
-             * black background also covers iPhone
-             * safe-area / inset regions.
-             */
-            top: calc(-1 * env(safe-area-inset-top));
-            right: calc(-1 * env(safe-area-inset-right));
-            bottom: calc(-1 * env(safe-area-inset-bottom));
-            left: calc(-1 * env(safe-area-inset-left));
-
-            width: calc(
-                100% +
-                env(safe-area-inset-left) +
-                env(safe-area-inset-right)
-            );
-
-            height: calc(
-                100% +
-                env(safe-area-inset-top) +
-                env(safe-area-inset-bottom)
-            );
+            width: 100vw;
+            height: 100vh;
 
             background: #000;
 
@@ -127,14 +106,28 @@
             overflow: hidden;
         }
 
+        /* Extra black backing */
+        #gameOverlay::before {
+            content: "";
 
-        /*
-         * The iframe is above the black backing.
-         */
+            position: absolute;
+
+            top: -100px;
+            right: -100px;
+            bottom: -100px;
+            left: -100px;
+
+            background: #000;
+
+            z-index: 0;
+        }
+
         #gameFrame {
             position: absolute;
 
             top: 0;
+            right: 0;
+            bottom: 0;
             left: 0;
 
             width: 100%;
@@ -146,22 +139,18 @@
 
             background: #000;
 
-            z-index: 1000;
+            z-index: 1;
         }
 
+        /* Exit button stays visible */
 
         #exitButton {
             position: fixed;
 
-            top: calc(
-                16px + env(safe-area-inset-top)
-            );
+            top: 16px;
+            right: 16px;
 
-            right: calc(
-                16px + env(safe-area-inset-right)
-            );
-
-            z-index: 1001;
+            z-index: 1002;
 
             padding: 10px 16px;
 
@@ -176,6 +165,7 @@
             cursor: pointer;
 
             backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
         }
 
         #exitButton:hover {
@@ -201,13 +191,8 @@
 </div>
 
 
-<!--
-    BLACK BACKING
+<!-- Game overlay -->
 
-    This covers the entire screen behind the iframe.
-    If the iframe leaves ANY area uncovered,
-    black is shown instead of the ZenPlay page.
--->
 <div id="gameOverlay">
 
     <button id="exitButton" onclick="closeGame()">
@@ -223,28 +208,39 @@
 
 
 <script>
-const gamesContainer = document.getElementById("games");
-const gameOverlay = document.getElementById("gameOverlay");
-const gameFrame = document.getElementById("gameFrame");
+
+const gamesContainer =
+    document.getElementById("games");
+
+const gameOverlay =
+    document.getElementById("gameOverlay");
+
+const gameFrame =
+    document.getElementById("gameFrame");
 
 
 async function loadGames() {
 
     try {
 
-        const response = await fetch("games.json");
+        const response =
+            await fetch("games.json");
 
         if (!response.ok) {
-            throw new Error("Could not load games.json");
+            throw new Error(
+                "Could not load games.json"
+            );
         }
 
-        const data = await response.json();
+        const data =
+            await response.json();
 
         gamesContainer.innerHTML = "";
 
         data.games.forEach(game => {
 
-            const card = document.createElement("div");
+            const card =
+                document.createElement("div");
 
             card.className = "game";
 
@@ -265,6 +261,7 @@ async function loadGames() {
             `;
 
             gamesContainer.appendChild(card);
+
         });
 
     } catch (error) {
@@ -273,36 +270,40 @@ async function loadGames() {
             "Unable to load games.";
 
         console.error(error);
+
     }
 }
 
 
 function openGame(file) {
 
-    /*
-     * Black overlay becomes visible FIRST.
-     * This guarantees the ZenPlay UI is hidden
-     * before the game appears.
-     */
+    /* Show black overlay first */
     gameOverlay.style.display = "block";
 
+    /* Prevent page scrolling */
     document.body.style.overflow = "hidden";
 
+    /* Load game */
     gameFrame.src = file;
 }
 
 
 function closeGame() {
 
+    /* Stop the game */
     gameFrame.src = "";
 
+    /* Hide overlay */
     gameOverlay.style.display = "none";
 
+    /* Restore page */
     document.body.style.overflow = "";
+
 }
 
 
 loadGames();
+
 </script>
 
 </body>
