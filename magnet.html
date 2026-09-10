@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+
+<meta name="viewport"
+      content="width=device-width,
+      initial-scale=1.0,
+      maximum-scale=1.0,
+      user-scalable=no,
+      viewport-fit=cover">
+
+<title>Magnet</title>
+
+<style>
+    html,
+    body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #000;
+    }
+
+    body {
+        touch-action: none;
+    }
+
+    canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+    }
+</style>
+</head>
+
+<body>
+
+<canvas id="canvas"></canvas>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let W = 0;
+let H = 0;
+let dpr = 1;
+
+const particles = [];
+
+const SETTINGS = {
+    density: 0.00055,
+
+    minParticles: 180,
+    maxParticles: 1400,
+
+    minRadius: 2.2,
+    maxRadius: 4.2,
+
+    magnetRadius: 190,
+    magnetStrength: 0.95,
+
+    minimumDistance: 7,
+    interactionDistance: 28,
+
+    friction: 0.985,
+    maxSpeed: 18,
+
+    wallBounce: 0.75
+};
+
+const pointer = {
+    x: 0,
+    y: 0,
+    active: false
+};
+
+function random(min, max) {
+    return Math.random() * (max - min) + min;
+}
+
+function getParticleTarget() {
+    return Math.max(
+        SETTINGS.minParticles,
+        Math.min(
+            SETTINGS.maxParticles,
+            Math.floor(W * H * SETTINGS.density)
+        )
+    );
+}
+
+function resizeCanvas() {
+    const oldW = W;
+    const oldH = H;
+
+    W = window.innerWidth;
+    H = window.innerHeight;
+
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    canvas.width = Math.floor(W * dpr);
+    canvas.height = Math.floor(H * dpr);
+
+    canvas.style.width = W + "px";
+    canvas.style.height = H + "px";
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    resizeParticles(oldW, oldH);
+}
+
+function resizeParticles(oldW, oldH) {
+
+    const target = getParticleTarget();
+
+    /*
+        First resize:
+        create the correct number of particles.
+    */
+
+    if (particles.length === 0) {
+
+        for (let i = 0; i < target; i++) {
+            createParticle(true);
+        }
+
+        return;
+    }
+
+    /*
+        Screen became larger:
+        add particles.
+    */
+
+    while (particles.length < target) {
+        createParticle(false);
+    }
+
+    /*
+        Screen became smaller:
+        remove excess particles.
+    */
+
+    while (particles.length > target) {
+        particles.pop();
+    }
+
+    /*
+        Scale existing particle positions
+        so resizing doesn't throw them
+        into a completely different area.
+    */
+
+    if (oldW > 0 && oldH > 0) {
+
+        const scaleX = W / oldW;
+        const scaleY = H / oldH;
+
+        for (const p of particles) {
+
+            p.x *= scaleX;
+            p.y *= scaleY;
+
+            p.x = Math.max(
+                p.radius,
+                Math.min(W - p.radius, p.x)
+            );
+
+            p.y = Math.max(
+                p.radius,
+                Math.min(H - p.radius, p.y)
+            );
+        }
+    }
+}
+
+function createParticle(initial) {
+
+    let x;
+    let y;
+
+    if (initial) {
+
+        /*
+            Initial particles are spread
+            throughout the entire screen.
+        */
+
+        x = random(10, W - 10);
+        y = random(10, H - 10);
+
+    } else {
+
+        /*
+            New particles appear across
+            the newly available screen space.
+        */
+
+        x = random(10, Math.max(11, W - 10));
+        y = random(10, Math.max(11, H - 10));
+    }
+
+    const yellow = Math.random() < 0.5;
+
+    particles.push({
+        x,
+        y,
+
+        vx: random(-0.25, 0.25),
+        vy: random(-0.25, 0.25),
+
+        radius: random(
+            SETTINGS.minRadius,
+            SETTINGS.maxRadius
+        ),
+
+        mass: random(0.7, 1.3),
+
+        yellow
+    });
+}
+
+window.addEventListener("resize", resizeCanvas);
+
+resizeCanvas();
+
+canvas.addEventListener("pointerdown", event => {
+
+    pointer.active = true;
+
+    pointer.x = event.clientX;
+    pointer.y = event.clientY;
+});
+
+canvas.addEventListener("pointermove", event => {
+
+    pointer.x = event.clientX;
+    pointer.y = event.clientY;
+});
+
+canvas.addEventListener("pointerup", () => {
+    pointer.active = false;
+});
+
+canvas.addEventListener("pointercancel", () => {
+    pointer.active = false;
+});
+
+window.addEventListener("blur", () => {
+    pointer.active = false;
+});
+
+function update() {
+
+    /*
+        MAGNET FORCE
+    */
+
+    if (pointer.active) {
+
+        for (const p of particles) {
+
+            const dx = pointer.x - p.x;
+            const dy = pointer.y - p.y;
+
+            const distance = Math.sqrt(
+                dx * dx +
+                dy * dy
+            );
+
+            if (
+                distance > 0.01 &&
+                distance < SETTINGS.magnetRadius
+            ) {
+
+                const normalized =
+                    1 -
+                    distance / SETTINGS.magnetRadius;
+
+                const strength =
+                    normalized * normalized;
+
+                const force =
+                    SETTINGS.magnetStrength *
+                    strength /
+                    p.mass;
+
+                p.vx +=
+                    (dx / distance) *
+                    force;
+
+                p.vy +=
+                    (dy / distance) *
+                    force;
+            }
+        }
+    }
+
+    /*
+        PARTICLE COLLISIONS / REPULSION
+    */
+
+    for (let i = 0; i < particles.length; i++) {
+
+        const a = particles[i];
+
+        for (let j = i + 1; j < particles.length; j++) {
+
+            const b = particles[j];
+
+            const dx = b.x - a.x;
+            const dy = b.y - a.y;
+
+            const distanceSquared =
+                dx * dx +
+                dy * dy;
+
+            if (
+                distanceSquared >
+                SETTINGS.interactionDistance *
+                SETTINGS.interactionDistance
+            ) {
+                continue;
+            }
+
+            const distance =
+                Math.sqrt(distanceSquared) || 0.001;
+
+            if (distance < SETTINGS.minimumDistance) {
+
+                const overlap =
+                    SETTINGS.minimumDistance -
+                    distance;
+
+                const nx = dx / distance;
+                const ny = dy / distance;
+
+                const push = overlap * 0.13;
+
+                a.vx -= nx * push;
+                a.vy -= ny * push;
+
+                b.vx += nx * push;
+                b.vy += ny * push;
+            }
+        }
+    }
+
+    /*
+        MOVE PARTICLES
+    */
+
+    for (const p of particles) {
+
+        p.vx *= SETTINGS.friction;
+        p.vy *= SETTINGS.friction;
+
+        const speed = Math.sqrt(
+            p.vx * p.vx +
+            p.vy * p.vy
+        );
+
+        if (speed > SETTINGS.maxSpeed) {
+
+            const scale =
+                SETTINGS.maxSpeed / speed;
+
+            p.vx *= scale;
+            p.vy *= scale;
+        }
+
+        p.x += p.vx;
+        p.y += p.vy;
+
+        /*
+            WALL COLLISION
+        */
+
+        if (p.x < p.radius) {
+
+            p.x = p.radius;
+            p.vx *= -SETTINGS.wallBounce;
+        }
+
+        if (p.x > W - p.radius) {
+
+            p.x = W - p.radius;
+            p.vx *= -SETTINGS.wallBounce;
+        }
+
+        if (p.y < p.radius) {
+
+            p.y = p.radius;
+            p.vy *= -SETTINGS.wallBounce;
+        }
+
+        if (p.y > H - p.radius) {
+
+            p.y = H - p.radius;
+            p.vy *= -SETTINGS.wallBounce;
+        }
+    }
+}
+
+function drawParticle(p) {
+
+    const color = p.yellow
+        ? "255,220,45"
+        : "255,255,255";
+
+    /*
+        Large neon glow
+    */
+
+    ctx.beginPath();
+
+    ctx.fillStyle =
+        `rgba(${color},0.10)`;
+
+    ctx.shadowBlur = 20;
+    ctx.shadowColor =
+        `rgb(${color})`;
+
+    ctx.arc(
+        p.x,
+        p.y,
+        p.radius * 2.4,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+
+    /*
+        Main orb
+    */
+
+    ctx.beginPath();
+
+    ctx.fillStyle =
+        `rgb(${color})`;
+
+    ctx.shadowBlur = 12;
+    ctx.shadowColor =
+        `rgb(${color})`;
+
+    ctx.arc(
+        p.x,
+        p.y,
+        p.radius,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+
+    /*
+        Tiny white highlight
+    */
+
+    ctx.shadowBlur = 0;
+
+    ctx.beginPath();
+
+    ctx.fillStyle =
+        "rgba(255,255,255,0.9)";
+
+    ctx.arc(
+        p.x - p.radius * 0.28,
+        p.y - p.radius * 0.28,
+        p.radius * 0.23,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+}
+
+function drawMagnet() {
+
+    if (!pointer.active) {
+        return;
+    }
+
+    /*
+        Subtle magnetic field
+    */
+
+    const gradient =
+        ctx.createRadialGradient(
+            pointer.x,
+            pointer.y,
+            0,
+            pointer.x,
+            pointer.y,
+            SETTINGS.magnetRadius
+        );
+
+    gradient.addColorStop(
+        0,
+        "rgba(255,255,255,0.10)"
+    );
+
+    gradient.addColorStop(
+        0.35,
+        "rgba(255,220,45,0.035)"
+    );
+
+    gradient.addColorStop(
+        1,
+        "rgba(255,220,45,0)"
+    );
+
+    ctx.fillStyle = gradient;
+
+    ctx.beginPath();
+
+    ctx.arc(
+        pointer.x,
+        pointer.y,
+        SETTINGS.magnetRadius,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+
+    /*
+        Magnet point
+    */
+
+    ctx.beginPath();
+
+    ctx.fillStyle = "#ffffff";
+
+    ctx.shadowBlur = 22;
+    ctx.shadowColor = "#ffffff";
+
+    ctx.arc(
+        pointer.x,
+        pointer.y,
+        3,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+}
+
+function draw() {
+
+    ctx.clearRect(
+        0,
+        0,
+        W,
+        H
+    );
+
+    /*
+        Every particle is rendered separately.
+        Nothing connects them.
+    */
+
+    for (const p of particles) {
+        drawParticle(p);
+    }
+
+    drawMagnet();
+}
+
+function animate() {
+
+    update();
+    draw();
+
+    requestAnimationFrame(animate);
+}
+
+animate();
+</script>
+
+</body>
+</html>
