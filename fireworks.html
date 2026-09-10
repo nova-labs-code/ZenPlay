@@ -1,0 +1,1222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width,
+        initial-scale=1.0,
+        maximum-scale=1.0,
+        user-scalable=no,
+        viewport-fit=cover"
+    >
+
+    <title>Fireworks</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: #000;
+        }
+    </style>
+</head>
+
+<body>
+
+<canvas id="canvas"></canvas>
+
+<script>
+const canvas = document.getElementById("canvas");
+
+const ctx = canvas.getContext("2d", {
+    alpha: false
+});
+
+let width = 0;
+let height = 0;
+let dpr = 1;
+
+/* ================================
+   PERFORMANCE LIMITS
+================================ */
+
+const MAX_ROCKETS = 14;
+const MAX_PARTICLES = 1800;
+
+/*
+    Time between rockets while holding.
+    Lower = more rockets.
+*/
+const LAUNCH_INTERVAL = 10;
+
+/* ================================
+   OBJECT ARRAYS
+================================ */
+
+const rockets = [];
+const particles = [];
+const flashes = [];
+const rings = [];
+
+/* ================================
+   INPUT
+================================ */
+
+let pointerDown = false;
+let pointerX = 0;
+let pointerY = 0;
+
+let launchTimer = 0;
+
+/* ================================
+   COLORS
+================================ */
+
+const colors = [
+    "#ff1744",
+    "#ff3d71",
+    "#ff4081",
+    "#ff00aa",
+    "#d500f9",
+    "#9c27b0",
+    "#7c4dff",
+    "#536dfe",
+    "#2979ff",
+    "#00b0ff",
+    "#00e5ff",
+    "#00e676",
+    "#76ff03",
+    "#c6ff00",
+    "#fff176",
+    "#ffc107",
+    "#ff9800",
+    "#ff7043",
+    "#ff3d00",
+    "#ffffff"
+];
+
+/* ================================
+   RGB CACHE
+================================ */
+
+const rgb = {};
+
+for (const color of colors) {
+    const hex = color.substring(1);
+
+    rgb[color] = {
+        r: parseInt(hex.substring(0, 2), 16),
+        g: parseInt(hex.substring(2, 4), 16),
+        b: parseInt(hex.substring(4, 6), 16)
+    };
+}
+
+function rgba(color, alpha) {
+
+    const c = rgb[color];
+
+    return `rgba(${c.r},${c.g},${c.b},${alpha})`;
+}
+
+/* ================================
+   RESIZE
+================================ */
+
+function resize() {
+
+    dpr = Math.min(
+        window.devicePixelRatio || 1,
+        1.5
+    );
+
+    width = window.innerWidth;
+    height = window.innerHeight;
+
+    canvas.width =
+        Math.floor(width * dpr);
+
+    canvas.height =
+        Math.floor(height * dpr);
+
+    canvas.style.width =
+        width + "px";
+
+    canvas.style.height =
+        height + "px";
+
+    ctx.setTransform(
+        dpr,
+        0,
+        0,
+        dpr,
+        0,
+        0
+    );
+}
+
+window.addEventListener(
+    "resize",
+    resize
+);
+
+resize();
+
+/* ================================
+   RANDOM HELPERS
+================================ */
+
+function random(min, max) {
+    return Math.random() *
+        (max - min) +
+        min;
+}
+
+function choose(array) {
+
+    return array[
+        Math.floor(
+            Math.random() *
+            array.length
+        )
+    ];
+}
+
+function differentColor(color) {
+
+    let result;
+
+    do {
+        result = choose(colors);
+    } while (
+        result === color
+    );
+
+    return result;
+}
+
+/* ================================
+   ROCKET
+================================ */
+
+class Rocket {
+
+    constructor(targetX, targetY) {
+
+        this.x = random(
+            width * 0.08,
+            width * 0.92
+        );
+
+        this.y = height + 15;
+
+        this.targetX = targetX;
+        this.targetY =
+            Math.max(70, targetY);
+
+        this.vx =
+            (targetX - this.x) *
+            0.005;
+
+        this.vy =
+            random(-10.2, -8.6);
+
+        this.color =
+            choose(colors);
+
+        this.trail = [];
+
+        this.alive = true;
+    }
+
+    update() {
+
+        this.trail.push({
+            x: this.x,
+            y: this.y
+        });
+
+        if (this.trail.length > 9) {
+            this.trail.shift();
+        }
+
+        this.vy += 0.035;
+
+        this.x += this.vx;
+        this.y += this.vy;
+
+        /*
+            Explode when reaching
+            the target height.
+        */
+        if (
+            this.y <= this.targetY ||
+            this.vy >= -0.7
+        ) {
+
+            this.explode();
+
+            this.alive = false;
+        }
+    }
+
+    draw() {
+
+        /*
+            Rocket trail.
+        */
+        if (this.trail.length > 1) {
+
+            ctx.beginPath();
+
+            ctx.moveTo(
+                this.trail[0].x,
+                this.trail[0].y
+            );
+
+            for (
+                let i = 1;
+                i < this.trail.length;
+                i++
+            ) {
+
+                ctx.lineTo(
+                    this.trail[i].x,
+                    this.trail[i].y
+                );
+            }
+
+            ctx.strokeStyle =
+                rgba(
+                    this.color,
+                    0.5
+                );
+
+            ctx.lineWidth = 1.4;
+
+            ctx.stroke();
+        }
+
+        /*
+            Rocket head.
+        */
+        ctx.beginPath();
+
+        ctx.arc(
+            this.x,
+            this.y,
+            2,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fillStyle =
+            "#ffffff";
+
+        ctx.fill();
+    }
+
+    explode() {
+
+        const x = this.x;
+        const y = this.y;
+
+        const mainColor =
+            this.color;
+
+        const secondColor =
+            differentColor(
+                mainColor
+            );
+
+        /*
+            Explosion flash.
+        */
+        flashes.push({
+            x: x,
+            y: y,
+            radius: 4,
+            maxRadius: random(
+                80,
+                120
+            ),
+            life: 1
+        });
+
+        /*
+            Shockwave.
+        */
+        rings.push({
+            x: x,
+            y: y,
+            radius: 2,
+            life: 1,
+            color: mainColor
+        });
+
+        /*
+            Main burst.
+            Kept deliberately low
+            for 14 simultaneous rockets.
+        */
+        const mainCount = 72;
+
+        for (
+            let i = 0;
+            i < mainCount;
+            i++
+        ) {
+
+            const angle =
+                Math.random() *
+                Math.PI * 2;
+
+            const speed =
+                random(2.4, 5.8);
+
+            particles.push(
+                new Particle(
+                    x,
+                    y,
+                    Math.cos(angle) *
+                        speed,
+                    Math.sin(angle) *
+                        speed,
+                    mainColor,
+                    "star"
+                )
+            );
+        }
+
+        /*
+            Secondary color.
+        */
+        const secondaryCount = 24;
+
+        for (
+            let i = 0;
+            i < secondaryCount;
+            i++
+        ) {
+
+            const angle =
+                Math.random() *
+                Math.PI * 2;
+
+            const speed =
+                random(1.7, 4.3);
+
+            particles.push(
+                new Particle(
+                    x,
+                    y,
+                    Math.cos(angle) *
+                        speed,
+                    Math.sin(angle) *
+                        speed,
+                    secondColor,
+                    "star"
+                )
+            );
+        }
+
+        /*
+            White center sparks.
+        */
+        for (
+            let i = 0;
+            i < 10;
+            i++
+        ) {
+
+            particles.push(
+                new Particle(
+                    x,
+                    y,
+                    random(-2, 2),
+                    random(-2, 2),
+                    "#ffffff",
+                    "core"
+                )
+            );
+        }
+
+        /*
+            Crackling sparks.
+        */
+        for (
+            let i = 0;
+            i < 15;
+            i++
+        ) {
+
+            const angle =
+                Math.random() *
+                Math.PI * 2;
+
+            const speed =
+                random(1.5, 4.7);
+
+            particles.push(
+                new Particle(
+                    x,
+                    y,
+                    Math.cos(angle) *
+                        speed,
+                    Math.sin(angle) *
+                        speed,
+                    "#ffffff",
+                    "crackle"
+                )
+            );
+        }
+
+        /*
+            Longer falling sparks.
+        */
+        for (
+            let i = 0;
+            i < 5;
+            i++
+        ) {
+
+            const angle =
+                Math.random() *
+                Math.PI * 2;
+
+            const speed =
+                random(4, 6);
+
+            particles.push(
+                new Particle(
+                    x,
+                    y,
+                    Math.cos(angle) *
+                        speed,
+                    Math.sin(angle) *
+                        speed,
+                    mainColor,
+                    "comet"
+                )
+            );
+        }
+    }
+}
+
+/* ================================
+   PARTICLE
+================================ */
+
+class Particle {
+
+    constructor(
+        x,
+        y,
+        vx,
+        vy,
+        color,
+        type
+    ) {
+
+        this.x = x;
+        this.y = y;
+
+        this.vx = vx;
+        this.vy = vy;
+
+        this.color = color;
+        this.type = type;
+
+        if (type === "core") {
+
+            this.life =
+                random(0.18, 0.32);
+
+        } else if (
+            type === "crackle"
+        ) {
+
+            this.life =
+                random(0.45, 0.75);
+
+        } else if (
+            type === "comet"
+        ) {
+
+            this.life =
+                random(0.75, 1.05);
+
+        } else {
+
+            this.life =
+                random(0.8, 1.25);
+        }
+
+        this.maxLife =
+            this.life;
+
+        this.size =
+            type === "core"
+                ? random(1.8, 2.8)
+                : type === "comet"
+                    ? random(1.2, 2)
+                    : random(0.8, 1.5);
+
+        this.trail = [];
+
+        this.drag =
+            type === "comet"
+                ? 0.989
+                : 0.985;
+
+        this.gravity =
+            type === "comet"
+                ? 0.06
+                : 0.045;
+
+        this.phase =
+            Math.random() *
+            Math.PI * 2;
+
+        this.twinkle =
+            Math.random() < 0.25;
+    }
+
+    update() {
+
+        /*
+            Only particles that
+            visually need trails get them.
+        */
+        if (
+            this.type === "star" ||
+            this.type === "comet"
+        ) {
+
+            this.trail.push({
+                x: this.x,
+                y: this.y
+            });
+
+            const maxTrail =
+                this.type === "comet"
+                    ? 7
+                    : 4;
+
+            if (
+                this.trail.length >
+                maxTrail
+            ) {
+                this.trail.shift();
+            }
+        }
+
+        this.vx *= this.drag;
+        this.vy *= this.drag;
+
+        this.vy += this.gravity;
+
+        this.x += this.vx;
+        this.y += this.vy;
+
+        /*
+            Crackle behavior.
+        */
+        if (
+            this.type === "crackle" &&
+            Math.random() < 0.05
+        ) {
+
+            this.vx +=
+                random(-0.45, 0.45);
+
+            this.vy +=
+                random(-0.45, 0.45);
+        }
+
+        /*
+            Fade.
+        */
+        this.life -=
+            this.type === "core"
+                ? 0.06
+                : 0.009;
+    }
+
+    draw() {
+
+        if (this.life <= 0) {
+            return;
+        }
+
+        let alpha =
+            this.life /
+            this.maxLife;
+
+        alpha =
+            Math.max(
+                0,
+                Math.min(1, alpha)
+            );
+
+        alpha *=
+            Math.min(
+                1,
+                this.life * 2.5
+            );
+
+        /*
+            Twinkle.
+        */
+        if (this.twinkle) {
+
+            const pulse =
+                Math.sin(
+                    performance.now() *
+                        0.018 +
+                    this.phase
+                );
+
+            if (pulse < -0.35) {
+                alpha *= 0.35;
+            }
+        }
+
+        /*
+            Particle trail.
+        */
+        if (
+            this.trail.length > 1 &&
+            (
+                this.type === "star" ||
+                this.type === "comet"
+            )
+        ) {
+
+            ctx.beginPath();
+
+            ctx.moveTo(
+                this.trail[0].x,
+                this.trail[0].y
+            );
+
+            for (
+                let i = 1;
+                i < this.trail.length;
+                i++
+            ) {
+
+                ctx.lineTo(
+                    this.trail[i].x,
+                    this.trail[i].y
+                );
+            }
+
+            ctx.strokeStyle =
+                rgba(
+                    this.color,
+                    alpha * 0.42
+                );
+
+            ctx.lineWidth =
+                this.type === "comet"
+                    ? 1.3
+                    : 0.8;
+
+            ctx.stroke();
+        }
+
+        /*
+            Spark.
+        */
+        ctx.beginPath();
+
+        ctx.arc(
+            this.x,
+            this.y,
+            this.size,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fillStyle =
+            rgba(
+                this.color,
+                alpha
+            );
+
+        ctx.fill();
+    }
+}
+
+/* ================================
+   FLASHES
+================================ */
+
+function updateFlashes() {
+
+    for (
+        let i = flashes.length - 1;
+        i >= 0;
+        i--
+    ) {
+
+        const flash =
+            flashes[i];
+
+        flash.radius +=
+            (
+                flash.maxRadius -
+                flash.radius
+            ) * 0.42;
+
+        flash.life -= 0.17;
+
+        if (flash.life <= 0) {
+
+            flashes.splice(
+                i,
+                1
+            );
+        }
+    }
+}
+
+function drawFlashes() {
+
+    for (const flash of flashes) {
+
+        const gradient =
+            ctx.createRadialGradient(
+                flash.x,
+                flash.y,
+                0,
+                flash.x,
+                flash.y,
+                flash.radius
+            );
+
+        gradient.addColorStop(
+            0,
+            `rgba(255,255,255,${flash.life})`
+        );
+
+        gradient.addColorStop(
+            0.07,
+            `rgba(255,255,255,${flash.life * 0.95})`
+        );
+
+        gradient.addColorStop(
+            0.2,
+            `rgba(255,255,255,${flash.life * 0.5})`
+        );
+
+        gradient.addColorStop(
+            0.5,
+            `rgba(255,255,255,${flash.life * 0.12})`
+        );
+
+        gradient.addColorStop(
+            1,
+            "rgba(255,255,255,0)"
+        );
+
+        ctx.fillStyle =
+            gradient;
+
+        ctx.beginPath();
+
+        ctx.arc(
+            flash.x,
+            flash.y,
+            flash.radius,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fill();
+    }
+}
+
+/* ================================
+   SHOCKWAVE RINGS
+================================ */
+
+function updateRings() {
+
+    for (
+        let i = rings.length - 1;
+        i >= 0;
+        i--
+    ) {
+
+        const ring =
+            rings[i];
+
+        ring.radius += 5;
+
+        ring.life -= 0.035;
+
+        if (ring.life <= 0) {
+
+            rings.splice(
+                i,
+                1
+            );
+        }
+    }
+}
+
+function drawRings() {
+
+    for (const ring of rings) {
+
+        ctx.beginPath();
+
+        ctx.arc(
+            ring.x,
+            ring.y,
+            ring.radius,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.strokeStyle =
+            rgba(
+                ring.color,
+                ring.life * 0.2
+            );
+
+        ctx.lineWidth = 1;
+
+        ctx.stroke();
+    }
+}
+
+/* ================================
+   POINTER POSITION
+================================ */
+
+function updatePointer(event) {
+
+    const rect =
+        canvas.getBoundingClientRect();
+
+    pointerX =
+        event.clientX -
+        rect.left;
+
+    pointerY =
+        event.clientY -
+        rect.top;
+}
+
+/* ================================
+   POINTER DOWN
+================================ */
+
+canvas.addEventListener(
+    "pointerdown",
+    event => {
+
+        pointerDown = true;
+
+        updatePointer(event);
+
+        canvas.setPointerCapture(
+            event.pointerId
+        );
+
+        /*
+            IMPORTANT:
+            Launch exactly one rocket
+            immediately.
+
+            Start the timer AFTER
+            that launch so a tap does
+            not create two rockets.
+        */
+        launch();
+
+        launchTimer =
+            LAUNCH_INTERVAL;
+    }
+);
+
+/* ================================
+   POINTER MOVE
+================================ */
+
+canvas.addEventListener(
+    "pointermove",
+    event => {
+
+        updatePointer(event);
+    }
+);
+
+/* ================================
+   POINTER UP
+================================ */
+
+canvas.addEventListener(
+    "pointerup",
+    () => {
+
+        pointerDown = false;
+    }
+);
+
+canvas.addEventListener(
+    "pointercancel",
+    () => {
+
+        pointerDown = false;
+    }
+);
+
+/* ================================
+   LAUNCH
+================================ */
+
+function launch() {
+
+    /*
+        Hard maximum:
+        never more than 14 rockets.
+    */
+    if (
+        rockets.length >=
+        MAX_ROCKETS
+    ) {
+        return;
+    }
+
+    rockets.push(
+        new Rocket(
+            pointerX,
+            pointerY
+        )
+    );
+}
+
+/* ================================
+   HOLD LAUNCHING
+================================ */
+
+function updateLaunching() {
+
+    if (!pointerDown) {
+        return;
+    }
+
+    launchTimer--;
+
+    if (launchTimer <= 0) {
+
+        launch();
+
+        launchTimer =
+            LAUNCH_INTERVAL;
+    }
+}
+
+/* ================================
+   UPDATE
+================================ */
+
+function update() {
+
+    updateLaunching();
+
+    /*
+        Rockets.
+    */
+    for (
+        let i = rockets.length - 1;
+        i >= 0;
+        i--
+    ) {
+
+        const rocket =
+            rockets[i];
+
+        rocket.update();
+
+        if (!rocket.alive) {
+
+            rockets.splice(
+                i,
+                1
+            );
+        }
+    }
+
+    /*
+        Particles.
+    */
+    for (
+        let i = particles.length - 1;
+        i >= 0;
+        i--
+    ) {
+
+        const particle =
+            particles[i];
+
+        particle.update();
+
+        if (
+            particle.life <= 0 ||
+            particle.y >
+                height + 100
+        ) {
+
+            particles.splice(
+                i,
+                1
+            );
+        }
+    }
+
+    updateFlashes();
+    updateRings();
+
+    /*
+        Particle safety cap.
+        This keeps 14-firework
+        bursts from accumulating
+        indefinitely.
+    */
+    if (
+        particles.length >
+        MAX_PARTICLES
+    ) {
+
+        particles.splice(
+            0,
+            particles.length -
+            MAX_PARTICLES
+        );
+    }
+}
+
+/* ================================
+   DRAW
+================================ */
+
+function draw() {
+
+    /*
+        Clear screen.
+    */
+    ctx.fillStyle =
+        "#000";
+
+    ctx.fillRect(
+        0,
+        0,
+        width,
+        height
+    );
+
+    /*
+        Additive blending makes
+        overlapping fireworks glow.
+    */
+    ctx.globalCompositeOperation =
+        "lighter";
+
+    drawFlashes();
+
+    /*
+        Rockets.
+    */
+    for (const rocket of rockets) {
+        rocket.draw();
+    }
+
+    /*
+        Particles.
+    */
+    for (const particle of particles) {
+        particle.draw();
+    }
+
+    drawRings();
+
+    ctx.globalCompositeOperation =
+        "source-over";
+}
+
+/* ================================
+   MAIN LOOP
+================================ */
+
+let lastTime =
+    performance.now();
+
+function loop(time) {
+
+    /*
+        Prevent huge physics jumps
+        when the browser pauses.
+    */
+    const delta =
+        Math.min(
+            2,
+            (time - lastTime) /
+                16.67
+        );
+
+    lastTime = time;
+
+    /*
+        Keep physics stable.
+    */
+    const steps =
+        Math.max(
+            1,
+            Math.ceil(delta)
+        );
+
+    for (
+        let i = 0;
+        i < steps;
+        i++
+    ) {
+
+        update();
+    }
+
+    draw();
+
+    requestAnimationFrame(
+        loop
+    );
+}
+
+requestAnimationFrame(
+    loop
+);
+</script>
+
+</body>
+</html>
