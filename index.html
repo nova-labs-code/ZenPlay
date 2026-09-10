@@ -88,33 +88,79 @@
             color: #6f7688;
         }
 
-        /* Full-screen black backing behind the game */
+
+        /* =========================================
+           GAME OVERLAY
+           ========================================= */
+
         #gameOverlay {
             position: fixed;
-            inset: 0;
-            width: 100vw;
-            height: 100vh;
+
+            /*
+             * Extend beyond the normal viewport so the
+             * black background also covers iPhone
+             * safe-area / inset regions.
+             */
+            top: calc(-1 * env(safe-area-inset-top));
+            right: calc(-1 * env(safe-area-inset-right));
+            bottom: calc(-1 * env(safe-area-inset-bottom));
+            left: calc(-1 * env(safe-area-inset-left));
+
+            width: calc(
+                100% +
+                env(safe-area-inset-left) +
+                env(safe-area-inset-right)
+            );
+
+            height: calc(
+                100% +
+                env(safe-area-inset-top) +
+                env(safe-area-inset-bottom)
+            );
+
             background: #000;
+
             display: none;
+
             z-index: 1000;
+
             overflow: hidden;
         }
 
-        /* The actual game */
+
+        /*
+         * The iframe is above the black backing.
+         */
         #gameFrame {
             position: absolute;
-            inset: 0;
+
+            top: 0;
+            left: 0;
+
             width: 100%;
             height: 100%;
+
             border: none;
+
             display: block;
+
             background: #000;
+
+            z-index: 1000;
         }
+
 
         #exitButton {
             position: fixed;
-            top: 16px;
-            right: 16px;
+
+            top: calc(
+                16px + env(safe-area-inset-top)
+            );
+
+            right: calc(
+                16px + env(safe-area-inset-right)
+            );
+
             z-index: 1001;
 
             padding: 10px 16px;
@@ -126,6 +172,7 @@
             color: white;
 
             font-size: 15px;
+
             cursor: pointer;
 
             backdrop-filter: blur(10px);
@@ -155,10 +202,11 @@
 
 
 <!--
-    This black overlay completely covers the ZenPlay UI.
-    The iframe sits on top of it.
-    If the iframe/game does not cover an area of the screen,
-    the black overlay is visible underneath.
+    BLACK BACKING
+
+    This covers the entire screen behind the iframe.
+    If the iframe leaves ANY area uncovered,
+    black is shown instead of the ZenPlay page.
 -->
 <div id="gameOverlay">
 
@@ -231,11 +279,16 @@ async function loadGames() {
 
 function openGame(file) {
 
-    gameFrame.src = file;
-
+    /*
+     * Black overlay becomes visible FIRST.
+     * This guarantees the ZenPlay UI is hidden
+     * before the game appears.
+     */
     gameOverlay.style.display = "block";
 
     document.body.style.overflow = "hidden";
+
+    gameFrame.src = file;
 }
 
 
