@@ -18,3 +18,6 @@ Draw with smooth, flowing neon ink that fades away naturally.
 
 ### Fireworks
 Launch colorful fireworks and watch them burst with realistic trails, flashes, and sparks.
+
+### Magnet
+Pull glowing particles together with a magnetic touch.
