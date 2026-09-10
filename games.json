@@ -59,6 +59,16 @@
   "type": "Interactive",
   "controls": "Mouse or touch",
   "status": "available"
+},
+{
+  "id": "smoke",
+  "name": "Smoke",
+  "file": "smoke.html",
+  "description": "Create soft, rising smoke with your touch or mouse.",
+  "category": "Satisfying",
+  "type": "Interactive",
+  "controls": "Mouse or touch",
+  "status": "available"
 }
   ]
 }
