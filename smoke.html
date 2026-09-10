@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+        content="width=device-width,
+        initial-scale=1.0,
+        maximum-scale=1.0,
+        user-scalable=no,
+        viewport-fit=cover">
+
+    <title>Smoke</title>
+
+    <style>
+        html,
+        body {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            touch-action: none;
+        }
+    </style>
+</head>
+
+<body>
+
+<canvas id="canvas"></canvas>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let width = 0;
+let height = 0;
+let dpr = 1;
+
+const smoke = [];
+
+const pointer = {
+    x: 0,
+    y: 0,
+    lastX: 0,
+    lastY: 0,
+    active: false
+};
+
+function resize() {
+    width = window.innerWidth;
+    height = window.innerHeight;
+
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+
+    canvas.style.width = width + "px";
+    canvas.style.height = height + "px";
+
+    ctx.setTransform(
+        dpr,
+        0,
+        0,
+        dpr,
+        0,
+        0
+    );
+}
+
+function createSmoke(x, y, amount = 3) {
+    for (let i = 0; i < amount; i++) {
+        smoke.push({
+            x: x + (Math.random() - 0.5) * 14,
+            y: y + (Math.random() - 0.5) * 10,
+
+            vx: (Math.random() - 0.5) * 0.6,
+            vy: -0.7 - Math.random() * 1.2,
+
+            size: 7 + Math.random() * 13,
+
+            opacity: 0.07 + Math.random() * 0.09,
+
+            life: 1,
+
+            rotation: Math.random() * Math.PI * 2,
+
+            rotationSpeed:
+                (Math.random() - 0.5) * 0.018
+        });
+    }
+}
+
+function updateSmoke(p) {
+
+    // Rising motion
+    p.vy -= 0.004;
+
+    // Gentle natural movement
+    p.vx += Math.sin(
+        p.y * 0.008 +
+        p.rotation
+    ) * 0.0025;
+
+    p.vx *= 0.995;
+    p.vy *= 0.998;
+
+    p.x += p.vx;
+    p.y += p.vy;
+
+    // Smoke expands as it rises
+    p.size += 0.04;
+
+    p.rotation += p.rotationSpeed;
+
+    // Slowly disappears
+    p.life -= 0.0015;
+}
+
+function drawSmoke(p) {
+
+    const alpha =
+        p.opacity *
+        Math.max(p.life, 0);
+
+    if (alpha <= 0) {
+        return;
+    }
+
+    const gradient = ctx.createRadialGradient(
+        p.x,
+        p.y,
+        0,
+        p.x,
+        p.y,
+        p.size
+    );
+
+    gradient.addColorStop(
+        0,
+        `rgba(220, 225, 235, ${alpha})`
+    );
+
+    gradient.addColorStop(
+        0.4,
+        `rgba(180, 185, 200, ${alpha * 0.5})`
+    );
+
+    gradient.addColorStop(
+        0.75,
+        `rgba(130, 135, 150, ${alpha * 0.18})`
+    );
+
+    gradient.addColorStop(
+        1,
+        "rgba(80, 85, 100, 0)"
+    );
+
+    ctx.fillStyle = gradient;
+
+    ctx.beginPath();
+
+    ctx.arc(
+        p.x,
+        p.y,
+        p.size,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+}
+
+function update() {
+
+    for (let i = smoke.length - 1; i >= 0; i--) {
+
+        const p = smoke[i];
+
+        updateSmoke(p);
+
+        if (
+            p.y + p.size < 0 ||
+            p.life <= 0
+        ) {
+            smoke.splice(i, 1);
+        }
+    }
+}
+
+function render() {
+
+    // Completely redraw the scene every frame.
+    // This prevents old smoke from leaving permanent pixels.
+    ctx.clearRect(
+        0,
+        0,
+        width,
+        height
+    );
+
+    // Older smoke is drawn first.
+    // Newer smoke is drawn afterward,
+    // so overlapping smoke appears in front.
+    for (const p of smoke) {
+        drawSmoke(p);
+    }
+}
+
+function loop() {
+    update();
+    render();
+
+    requestAnimationFrame(loop);
+}
+
+function movePointer(x, y) {
+
+    if (!pointer.active) {
+        pointer.x = x;
+        pointer.y = y;
+
+        pointer.lastX = x;
+        pointer.lastY = y;
+
+        return;
+    }
+
+    pointer.lastX = pointer.x;
+    pointer.lastY = pointer.y;
+
+    pointer.x = x;
+    pointer.y = y;
+
+    const dx =
+        pointer.x -
+        pointer.lastX;
+
+    const dy =
+        pointer.y -
+        pointer.lastY;
+
+    const distance = Math.sqrt(
+        dx * dx +
+        dy * dy
+    );
+
+    const amount = Math.max(
+        1,
+        Math.min(
+            10,
+            Math.floor(distance / 3) + 1
+        )
+    );
+
+    createSmoke(
+        pointer.x,
+        pointer.y,
+        amount
+    );
+}
+
+canvas.addEventListener(
+    "pointerdown",
+    event => {
+
+        pointer.active = true;
+
+        pointer.x = event.clientX;
+        pointer.y = event.clientY;
+
+        pointer.lastX = pointer.x;
+        pointer.lastY = pointer.y;
+
+        createSmoke(
+            pointer.x,
+            pointer.y,
+            10
+        );
+    }
+);
+
+canvas.addEventListener(
+    "pointermove",
+    event => {
+
+        if (pointer.active) {
+            movePointer(
+                event.clientX,
+                event.clientY
+            );
+        }
+    }
+);
+
+canvas.addEventListener(
+    "pointerup",
+    () => {
+        pointer.active = false;
+    }
+);
+
+canvas.addEventListener(
+    "pointercancel",
+    () => {
+        pointer.active = false;
+    }
+);
+
+canvas.addEventListener(
+    "pointerleave",
+    () => {
+        pointer.active = false;
+    }
+);
+
+window.addEventListener(
+    "resize",
+    resize
+);
+
+resize();
+loop();
+</script>
+
+</body>
+</html>
