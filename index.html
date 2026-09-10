@@ -106,29 +106,10 @@
             overflow: hidden;
         }
 
-        /* Extra black backing */
-        #gameOverlay::before {
-            content: "";
-
-            position: absolute;
-
-            top: -100px;
-            right: -100px;
-            bottom: -100px;
-            left: -100px;
-
-            background: #000;
-
-            z-index: 0;
-        }
-
         #gameFrame {
             position: absolute;
 
-            top: 0;
-            right: 0;
-            bottom: 0;
-            left: 0;
+            inset: 0;
 
             width: 100%;
             height: 100%;
@@ -139,10 +120,10 @@
 
             background: #000;
 
-            z-index: 1;
+            z-index: 1001;
         }
 
-        /* Exit button stays visible */
+        /* Exit button */
 
         #exitButton {
             position: fixed;
@@ -170,6 +151,13 @@
 
         #exitButton:hover {
             background: rgba(40, 40, 48, 0.95);
+        }
+
+        /* Black page while playing */
+
+        body.playing {
+            background: #000;
+            padding: 0;
         }
     </style>
 </head>
@@ -208,6 +196,9 @@
 
 
 <script>
+
+const container =
+    document.querySelector(".container");
 
 const gamesContainer =
     document.getElementById("games");
@@ -277,13 +268,24 @@ async function loadGames() {
 
 function openGame(file) {
 
-    /* Show black overlay first */
+    /* Remove the games UI */
+
+    gamesContainer.style.display = "none";
+
+    /* Make the page background black */
+
+    document.body.classList.add("playing");
+
+    /* Show game */
+
     gameOverlay.style.display = "block";
 
-    /* Prevent page scrolling */
+    /* Prevent scrolling */
+
     document.body.style.overflow = "hidden";
 
     /* Load game */
+
     gameFrame.src = file;
 }
 
@@ -291,12 +293,23 @@ function openGame(file) {
 function closeGame() {
 
     /* Stop the game */
+
     gameFrame.src = "";
 
-    /* Hide overlay */
+    /* Hide game */
+
     gameOverlay.style.display = "none";
 
+    /* Restore games UI */
+
+    gamesContainer.style.display = "";
+
+    /* Restore background */
+
+    document.body.classList.remove("playing");
+
     /* Restore page */
+
     document.body.style.overflow = "";
 
 }
