@@ -1,6 +1,12 @@
-# ZenPlay Games
+# ZenPlay
 
-A collection of simple, satisfying games.
+A collection of simple, satisfying games and interactive experiences designed to be relaxing, fun, and easy to pick up.
+
+## About
+
+ZenPlay is a small collection of browser-based experiences focused on simple interactions and satisfying visual effects.
+
+Each game is designed to work with **mouse or touch controls**, making ZenPlay playable on both desktop and mobile devices.
 
 ## Games
 
@@ -21,3 +27,24 @@ Launch colorful fireworks and watch them burst with realistic trails, flashes, a
 
 ### Magnet
 Pull glowing particles together with a magnetic touch.
+
+## Features
+
+- Simple, easy-to-use interactions
+- Mouse and touch support
+- Satisfying visual effects
+- Designed for desktop and mobile
+- Lightweight browser-based experiences
+- No complicated controls
+
+## Project Structure
+
+Each experience is kept as its own HTML file, making the collection simple to maintain and expand.
+
+## More Games
+
+ZenPlay is designed to grow over time. New games and interactive experiences can be added to the collection while keeping the same simple and satisfying style.
+
+---
+
+Made for fun. Built to relax.
