@@ -29,6 +29,26 @@
       "type": "Simulation",
       "controls": "Mouse or touch",
       "status": "available"
+    },
+    {
+      "id": "ink",
+      "name": "Ink",
+      "file": "ink.html",
+      "description": "Draw with smooth, flowing neon ink that fades away naturally.",
+      "category": "Satisfying",
+      "type": "Simulation",
+      "controls": "Mouse or touch",
+      "status": "available"
+    },
+    {
+      "id": "fireworks",
+      "name": "Fireworks",
+      "file": "fireworks.html",
+      "description": "Launch colorful fireworks and watch them burst with realistic trails, flashes, and sparks.",
+      "category": "Satisfying",
+      "type": "Interactive",
+      "controls": "Mouse or touch",
+      "status": "available"
     }
   ]
 }
