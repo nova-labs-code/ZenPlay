@@ -88,19 +88,27 @@
             color: #6f7688;
         }
 
+        /* Full-screen black backing behind the game */
         #gameOverlay {
             position: fixed;
             inset: 0;
+            width: 100vw;
+            height: 100vh;
             background: #000;
             display: none;
             z-index: 1000;
+            overflow: hidden;
         }
 
+        /* The actual game */
         #gameFrame {
+            position: absolute;
+            inset: 0;
             width: 100%;
             height: 100%;
             border: none;
             display: block;
+            background: #000;
         }
 
         #exitButton {
@@ -146,6 +154,12 @@
 </div>
 
 
+<!--
+    This black overlay completely covers the ZenPlay UI.
+    The iframe sits on top of it.
+    If the iframe/game does not cover an area of the screen,
+    the black overlay is visible underneath.
+-->
 <div id="gameOverlay">
 
     <button id="exitButton" onclick="closeGame()">
