@@ -69,6 +69,16 @@
   "type": "Interactive",
   "controls": "Mouse or touch",
   "status": "available"
+},
+{
+  "id": "paint",
+  "name": "Paint",
+  "file": "paint.html",
+  "description": "Paint freely with simple, colorful strokes.",
+  "category": "Satisfying",
+  "type": "Interactive",
+  "controls": "Mouse or touch",
+  "status": "available"
 }
   ]
 }
