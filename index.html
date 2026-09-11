@@ -3,12 +3,16 @@
 <head>
     <meta charset="UTF-8">
 
-    <meta name="viewport"
-        content="width=device-width,
-        initial-scale=1.0,
-        maximum-scale=1.0,
-        user-scalable=no,
-        viewport-fit=cover">
+    <meta
+        name="viewport"
+        content="
+            width=device-width,
+            initial-scale=1.0,
+            maximum-scale=1.0,
+            user-scalable=no,
+            viewport-fit=cover
+        "
+    >
 
     <title>ZenPlay</title>
 
@@ -91,8 +95,9 @@
         /*
             Game overlay
 
-            Absolute instead of fixed to avoid the iOS
-            fixed-position touch-coordinate issue after rotation.
+            Absolute positioning is intentional here.
+            It avoids relying on iOS's fixed-position
+            touch-coordinate handling during rotation.
         */
 
         #gameOverlay {
@@ -112,11 +117,14 @@
 
             overflow: hidden;
 
-            touch-action: none;
+            margin: 0;
+            padding: 0;
         }
 
         /*
-            Game iframe
+            The iframe fills the overlay.
+
+            It does NOT use fixed positioning.
         */
 
         #gameFrame {
@@ -136,14 +144,12 @@
 
             z-index: 1001;
 
-            touch-action: auto;
+            margin: 0;
+            padding: 0;
         }
 
         /*
             Exit button
-
-            Absolute so it uses the overlay's coordinate
-            system rather than a fixed viewport coordinate.
         */
 
         #exitButton {
@@ -157,7 +163,7 @@
                 16px + env(safe-area-inset-right)
             );
 
-            z-index: 1003;
+            z-index: 1002;
 
             padding: 10px 16px;
 
@@ -171,14 +177,9 @@
 
             cursor: pointer;
 
-            -webkit-tap-highlight-color: transparent;
-
             touch-action: manipulation;
 
-            pointer-events: auto;
-
-            user-select: none;
-            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
 
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
@@ -187,6 +188,10 @@
         #exitButton:hover {
             background: rgba(40, 40, 48, 0.95);
         }
+
+        /*
+            Black page while playing
+        */
 
         body.playing {
             background: #000;
@@ -216,14 +221,17 @@
 
 <div id="gameOverlay">
 
-    <button id="exitButton">
+    <button
+        id="exitButton"
+        type="button"
+    >
         Exit
     </button>
 
     <iframe
         id="gameFrame"
-        allow="fullscreen">
-    </iframe>
+        allow="fullscreen"
+    ></iframe>
 
 </div>
 
@@ -242,18 +250,189 @@ const gameFrame =
 const exitButton =
     document.getElementById("exitButton");
 
-
 let savedScrollPosition = 0;
 
-let gameOpen = false;
-
-let resizeTimer = null;
-
-let exitHandled = false;
+let viewportSyncTimer = null;
 
 
 /*
-    Load games
+    Get the current usable document viewport.
+
+    documentElement.clientWidth/clientHeight are
+    deliberately used instead of depending only on
+    visualViewport because iOS can temporarily report
+    stale visualViewport values during rotation.
+*/
+
+function getViewportSize() {
+
+    const width =
+        document.documentElement.clientWidth ||
+        window.innerWidth;
+
+    const height =
+        document.documentElement.clientHeight ||
+        window.innerHeight;
+
+    return {
+        width,
+        height
+    };
+}
+
+
+/*
+    Update the overlay and iframe.
+
+    The iframe itself stays 100% of the overlay.
+    This means we only have to get the outer viewport
+    dimensions correct.
+*/
+
+function updateGameViewport() {
+
+    if (
+        gameOverlay.style.display === "none" ||
+        !document.body.classList.contains("playing")
+    ) {
+        return;
+    }
+
+    const viewport =
+        getViewportSize();
+
+    /*
+        Keep the overlay at the exact scroll position
+        where the game was opened.
+    */
+
+    gameOverlay.style.left = "0px";
+
+    gameOverlay.style.top =
+        savedScrollPosition + "px";
+
+    gameOverlay.style.width =
+        viewport.width + "px";
+
+    gameOverlay.style.height =
+        viewport.height + "px";
+
+
+    /*
+        Explicitly resize the iframe too.
+
+        This makes the iframe update even if iOS does
+        not immediately recalculate its percentage size.
+    */
+
+    gameFrame.style.left = "0px";
+
+    gameFrame.style.top = "0px";
+
+    gameFrame.style.width =
+        viewport.width + "px";
+
+    gameFrame.style.height =
+        viewport.height + "px";
+}
+
+
+/*
+    Force the browser to perform a layout before
+    measuring the viewport again.
+*/
+
+function forceLayout() {
+
+    void document.documentElement.offsetHeight;
+
+    void gameOverlay.offsetWidth;
+
+    void gameFrame.offsetWidth;
+}
+
+
+/*
+    iOS can fire resize/orientation events while the
+    rotation animation is still changing the viewport.
+
+    So we wait until the UI has settled and then sync
+    several times.
+*/
+
+function scheduleViewportSync() {
+
+    if (
+        !document.body.classList.contains("playing")
+    ) {
+        return;
+    }
+
+    clearTimeout(viewportSyncTimer);
+
+
+    /*
+        First sync after the current rendering cycle.
+    */
+
+    requestAnimationFrame(() => {
+
+        forceLayout();
+
+        updateGameViewport();
+
+
+        /*
+            Second sync on the next frame.
+        */
+
+        requestAnimationFrame(() => {
+
+            forceLayout();
+
+            updateGameViewport();
+
+
+            /*
+                Wait for iOS's rotation/layout process
+                to settle.
+            */
+
+            viewportSyncTimer =
+                setTimeout(() => {
+
+                    requestAnimationFrame(() => {
+
+                        forceLayout();
+
+                        updateGameViewport();
+
+
+                        /*
+                            One final delayed sync.
+                        */
+
+                        viewportSyncTimer =
+                            setTimeout(() => {
+
+                                forceLayout();
+
+                                updateGameViewport();
+
+                            }, 150);
+
+                    });
+
+                }, 150);
+
+        });
+
+    });
+}
+
+
+/*
+    Load games from games.json
 */
 
 async function loadGames() {
@@ -264,15 +443,18 @@ async function loadGames() {
             await fetch("games.json");
 
         if (!response.ok) {
+
             throw new Error(
                 "Could not load games.json"
             );
+
         }
 
         const data =
             await response.json();
 
         gamesContainer.innerHTML = "";
+
 
         data.games.forEach(game => {
 
@@ -281,9 +463,13 @@ async function loadGames() {
 
             card.className = "game";
 
+
             card.onclick = () => {
+
                 openGame(game.file);
+
             };
+
 
             card.innerHTML = `
                 <h2>${game.name}</h2>
@@ -296,6 +482,7 @@ async function loadGames() {
                     ${game.category} · ${game.type}
                 </div>
             `;
+
 
             gamesContainer.appendChild(card);
 
@@ -314,189 +501,21 @@ async function loadGames() {
 
 
 /*
-    Get the actual visible viewport size.
-
-    visualViewport is preferred on iOS because the visual
-    viewport can temporarily differ from window.innerWidth
-    and window.innerHeight during rotation.
-*/
-
-function getViewportSize() {
-
-    if (window.visualViewport) {
-
-        return {
-            width:
-                Math.round(
-                    window.visualViewport.width
-                ),
-
-            height:
-                Math.round(
-                    window.visualViewport.height
-                )
-        };
-
-    }
-
-    return {
-        width:
-            Math.round(
-                window.innerWidth
-            ),
-
-        height:
-            Math.round(
-                window.innerHeight
-            )
-    };
-
-}
-
-
-/*
-    Resize the overlay and iframe.
-
-    This is the important iframe fix.
-*/
-
-function updateGameViewport() {
-
-    if (!gameOpen) {
-        return;
-    }
-
-    const viewport =
-        getViewportSize();
-
-    /*
-        Keep the overlay at the document position
-        occupied by the viewport.
-    */
-
-    gameOverlay.style.left = "0px";
-
-    gameOverlay.style.top =
-        savedScrollPosition + "px";
-
-    gameOverlay.style.width =
-        viewport.width + "px";
-
-    gameOverlay.style.height =
-        viewport.height + "px";
-
-
-    /*
-        Explicitly resize the iframe.
-
-        Do NOT rely only on width:100% and height:100%.
-        iOS can retain the old iframe layout size during
-        an orientation transition.
-    */
-
-    gameFrame.style.left = "0px";
-
-    gameFrame.style.top = "0px";
-
-    gameFrame.style.width =
-        viewport.width + "px";
-
-    gameFrame.style.height =
-        viewport.height + "px";
-
-
-    /*
-        Force layout calculation.
-    */
-
-    void gameOverlay.offsetWidth;
-
-    void gameOverlay.offsetHeight;
-
-    void gameFrame.offsetWidth;
-
-    void gameFrame.offsetHeight;
-
-    gameOverlay.getBoundingClientRect();
-
-    gameFrame.getBoundingClientRect();
-
-}
-
-
-/*
-    Rotation/resize synchronization.
-
-    iOS can fire multiple resize events during rotation,
-    so we wait until the viewport has settled.
-*/
-
-function scheduleViewportSync() {
-
-    if (!gameOpen) {
-        return;
-    }
-
-    clearTimeout(resizeTimer);
-
-    /*
-        Immediately stop using stale dimensions.
-    */
-
-    updateGameViewport();
-
-
-    /*
-        Wait for the current resize stage to finish.
-    */
-
-    resizeTimer = setTimeout(() => {
-
-        requestAnimationFrame(() => {
-
-            requestAnimationFrame(() => {
-
-                updateGameViewport();
-
-                /*
-                    One more delayed pass handles the case
-                    where iOS changes visualViewport after
-                    the normal resize event.
-                */
-
-                setTimeout(() => {
-
-                    updateGameViewport();
-
-                }, 100);
-
-            });
-
-        });
-
-    }, 150);
-
-}
-
-
-/*
-    Open game
+    Open a game
 */
 
 function openGame(file) {
 
     /*
-        Save exact scroll position.
+        Save the exact page position.
     */
 
     savedScrollPosition =
         window.scrollY;
 
-    gameOpen = true;
-
 
     /*
-        Hide game cards.
+        Hide the game list.
     */
 
     gamesContainer.style.display =
@@ -504,7 +523,7 @@ function openGame(file) {
 
 
     /*
-        Make page black.
+        Make the page black.
     */
 
     document.body.classList.add(
@@ -513,7 +532,7 @@ function openGame(file) {
 
 
     /*
-        Prevent page scrolling.
+        Prevent the document from scrolling.
     */
 
     document.body.style.overflow =
@@ -521,7 +540,7 @@ function openGame(file) {
 
 
     /*
-        Show overlay.
+        Show the game overlay.
     */
 
     gameOverlay.style.display =
@@ -529,41 +548,44 @@ function openGame(file) {
 
 
     /*
-        Load game.
+        Load the game.
     */
 
-    gameFrame.src = file;
+    gameFrame.src =
+        file;
 
 
     /*
-        Initial sizing.
+        Give the DOM one frame to create the
+        overlay before measuring it.
     */
 
-    updateGameViewport();
+    requestAnimationFrame(() => {
+
+        updateGameViewport();
+
+        scheduleViewportSync();
+
+    });
 
 }
 
 
 /*
-    Close game
+    Close the game
 */
 
 function closeGame() {
 
-    gameOpen = false;
-
-    clearTimeout(resizeTimer);
-
-
     /*
-        Stop iframe.
+        Stop the game.
     */
 
     gameFrame.src = "";
 
 
     /*
-        Hide overlay.
+        Hide the overlay.
     */
 
     gameOverlay.style.display =
@@ -571,7 +593,7 @@ function closeGame() {
 
 
     /*
-        Restore game cards.
+        Show the games again.
     */
 
     gamesContainer.style.display =
@@ -579,7 +601,7 @@ function closeGame() {
 
 
     /*
-        Restore page.
+        Restore the normal page.
     */
 
     document.body.classList.remove(
@@ -596,7 +618,15 @@ function closeGame() {
 
 
     /*
-        Restore exact scroll position.
+        Clear any pending rotation sync.
+    */
+
+    clearTimeout(viewportSyncTimer);
+
+
+    /*
+        Restore the exact position where
+        the game was opened.
     */
 
     requestAnimationFrame(() => {
@@ -612,44 +642,23 @@ function closeGame() {
 
 
 /*
-    Exit button
+    Exit button events.
+
+    pointerup is used first because it gives iOS
+    a direct pointer interaction.
+
+    click remains as a fallback.
 */
-
-function handleExit(event) {
-
-    event.preventDefault();
-
-    event.stopPropagation();
-
-    if (exitHandled) {
-        return;
-    }
-
-    exitHandled = true;
-
-    closeGame();
-
-    setTimeout(() => {
-
-        exitHandled = false;
-
-    }, 350);
-
-}
-
 
 exitButton.addEventListener(
     "pointerup",
-    handleExit,
-    {
-        passive: false
-    }
-);
+    event => {
 
+        event.preventDefault();
 
-exitButton.addEventListener(
-    "touchend",
-    handleExit,
+        closeGame();
+
+    },
     {
         passive: false
     }
@@ -658,26 +667,18 @@ exitButton.addEventListener(
 
 exitButton.addEventListener(
     "click",
-    handleExit
-);
+    event => {
 
+        event.preventDefault();
 
-/*
-    Normal browser resize
-*/
-
-window.addEventListener(
-    "resize",
-    () => {
-
-        scheduleViewportSync();
+        closeGame();
 
     }
 );
 
 
 /*
-    Orientation change
+    Rotation / viewport events
 */
 
 window.addEventListener(
@@ -690,8 +691,19 @@ window.addEventListener(
 );
 
 
+window.addEventListener(
+    "resize",
+    () => {
+
+        scheduleViewportSync();
+
+    }
+);
+
+
 /*
-    iOS visual viewport resize
+    visualViewport can change separately from the
+    normal window viewport on iOS.
 */
 
 if (window.visualViewport) {
@@ -709,32 +721,7 @@ if (window.visualViewport) {
 
 
 /*
-    Also catch viewport scrolling/offset changes.
-
-    This can happen when iOS changes its visual viewport
-    during rotation or browser UI transitions.
-*/
-
-if (window.visualViewport) {
-
-    window.visualViewport.addEventListener(
-        "scroll",
-        () => {
-
-            if (!gameOpen) {
-                return;
-            }
-
-            updateGameViewport();
-
-        }
-    );
-
-}
-
-
-/*
-    Load games.
+    Initial game loading
 */
 
 loadGames();
