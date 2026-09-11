@@ -95,7 +95,10 @@
             inset: 0;
 
             width: 100vw;
+            width: 100dvw;
+
             height: 100vh;
+            height: 100dvh;
 
             background: #000;
 
@@ -206,8 +209,15 @@ const gameOverlay =
 const gameFrame =
     document.getElementById("gameFrame");
 
-let savedScrollPosition = 0;
 
+let savedScrollPosition = 0;
+let gameOpen = false;
+let currentGameFile = null;
+
+
+/* =========================
+   LOAD GAMES
+========================= */
 
 async function loadGames() {
 
@@ -254,6 +264,51 @@ async function loadGames() {
 
         });
 
+        /*
+            If the page was restored after
+            rotation and the URL still says
+            #game, restore the game.
+        */
+
+        if (location.hash === "#game") {
+
+            const savedGame =
+                sessionStorage.getItem(
+                    "zenplay-current-game"
+                );
+
+            const savedScroll =
+                sessionStorage.getItem(
+                    "zenplay-scroll-position"
+                );
+
+            if (savedGame) {
+
+                savedScrollPosition =
+                    savedScroll
+                        ? Number(savedScroll)
+                        : 0;
+
+                showGame(savedGame);
+
+            } else {
+
+                /*
+                    Invalid game state.
+                    Remove the hash.
+                */
+
+                history.replaceState(
+                    null,
+                    "",
+                    location.pathname +
+                    location.search
+                );
+
+            }
+
+        }
+
     } catch (error) {
 
         gamesContainer.innerHTML =
@@ -265,70 +320,360 @@ async function loadGames() {
 }
 
 
+/* =========================
+   OPEN GAME
+========================= */
+
 function openGame(file) {
 
-    /* Save the exact scroll position */
+    if (gameOpen) {
+        return;
+    }
 
-    savedScrollPosition = window.scrollY;
+    /*
+        Save the exact scroll position.
+    */
 
-    /* Hide the games container */
+    savedScrollPosition =
+        window.scrollY;
 
-    gamesContainer.style.display = "none";
+    /*
+        Save the game so it can be
+        restored if the browser restores
+        the page during rotation.
+    */
 
-    /* Make the page black */
+    sessionStorage.setItem(
+        "zenplay-current-game",
+        file
+    );
 
-    document.body.classList.add("playing");
+    sessionStorage.setItem(
+        "zenplay-scroll-position",
+        String(savedScrollPosition)
+    );
 
-    /* Show the game */
+    currentGameFile = file;
 
-    gameOverlay.style.display = "block";
+    /*
+        Add a browser history entry.
 
-    /* Prevent scrolling */
+        The important part is that we use
+        pushState instead of replacing the
+        current page history entry.
+    */
 
-    document.body.style.overflow = "hidden";
+    if (location.hash !== "#game") {
 
-    /* Load the game */
+        history.pushState(
+            {
+                zenplayGame: true
+            },
+            "",
+            location.pathname +
+            location.search +
+            "#game"
+        );
 
-    gameFrame.src = file;
+    }
+
+    showGame(file);
 }
 
 
+/* =========================
+   SHOW GAME
+========================= */
+
+function showGame(file) {
+
+    gameOpen = true;
+    currentGameFile = file;
+
+    /*
+        Save the state again.
+    */
+
+    sessionStorage.setItem(
+        "zenplay-current-game",
+        file
+    );
+
+    sessionStorage.setItem(
+        "zenplay-scroll-position",
+        String(savedScrollPosition)
+    );
+
+    /*
+        Hide game list.
+    */
+
+    gamesContainer.style.display = "none";
+
+    /*
+        Make the entire page black.
+    */
+
+    document.body.classList.add("playing");
+
+    /*
+        Show game overlay.
+    */
+
+    gameOverlay.style.display = "block";
+
+    /*
+        Prevent background scrolling.
+    */
+
+    document.body.style.overflow = "hidden";
+
+    /*
+        Load game.
+    */
+
+    if (gameFrame.src !==
+        new URL(file, location.href).href) {
+
+        gameFrame.src = file;
+
+    }
+
+}
+
+
+/* =========================
+   CLOSE GAME
+========================= */
+
 function closeGame() {
 
-    /* Stop the game */
+    if (!gameOpen) {
+        return;
+    }
+
+    /*
+        Exit button behaves exactly like
+        the phone's Back button.
+
+        Going back removes #game and fires
+        the popstate event.
+    */
+
+    if (location.hash === "#game") {
+
+        history.back();
+
+    } else {
+
+        finishCloseGame();
+
+    }
+
+}
+
+
+/* =========================
+   ACTUALLY CLOSE GAME
+========================= */
+
+function finishCloseGame() {
+
+    if (!gameOpen) {
+        return;
+    }
+
+    gameOpen = false;
+
+    currentGameFile = null;
+
+    /*
+        Stop the game completely.
+    */
 
     gameFrame.src = "";
 
-    /* Hide the game */
+    /*
+        Hide overlay.
+    */
 
     gameOverlay.style.display = "none";
 
-    /* Restore the games container */
+    /*
+        Show games again.
+    */
 
     gamesContainer.style.display = "";
 
-    /* Restore the normal background */
+    /*
+        Restore normal page.
+    */
 
     document.body.classList.remove("playing");
 
-    /* Restore scrolling */
+    /*
+        Restore scrolling.
+    */
 
     document.body.style.overflow = "";
 
     /*
-        Restore the exact position
-        the user was at before opening
-        the game.
+        Remove saved game state.
+    */
+
+    sessionStorage.removeItem(
+        "zenplay-current-game"
+    );
+
+    sessionStorage.removeItem(
+        "zenplay-scroll-position"
+    );
+
+    /*
+        Restore exact scroll position.
     */
 
     requestAnimationFrame(() => {
+
         window.scrollTo(
             0,
             savedScrollPosition
         );
+
     });
+
 }
 
+
+/* =========================
+   BROWSER BACK BUTTON
+========================= */
+
+window.addEventListener(
+    "popstate",
+    event => {
+
+        /*
+            If the game is currently open
+            and the browser went back,
+            close the game.
+        */
+
+        if (
+            gameOpen &&
+            location.hash !== "#game"
+        ) {
+
+            finishCloseGame();
+
+        }
+
+    }
+);
+
+
+/* =========================
+   HASH CHANGES
+========================= */
+
+window.addEventListener(
+    "hashchange",
+    () => {
+
+        /*
+            Going from #game to no hash
+            means Back was pressed.
+        */
+
+        if (
+            gameOpen &&
+            location.hash !== "#game"
+        ) {
+
+            finishCloseGame();
+
+        }
+
+    }
+);
+
+
+/* =========================
+   PAGE RESTORATION
+========================= */
+
+window.addEventListener(
+    "pageshow",
+    () => {
+
+        /*
+            If the browser restored the page
+            and the URL still contains #game,
+            restore the game.
+        */
+
+        if (
+            location.hash === "#game" &&
+            !gameOpen
+        ) {
+
+            const savedGame =
+                sessionStorage.getItem(
+                    "zenplay-current-game"
+                );
+
+            const savedScroll =
+                sessionStorage.getItem(
+                    "zenplay-scroll-position"
+                );
+
+            if (savedGame) {
+
+                savedScrollPosition =
+                    savedScroll
+                        ? Number(savedScroll)
+                        : 0;
+
+                showGame(savedGame);
+
+            }
+
+        }
+
+    }
+);
+
+
+/* =========================
+   ROTATION / RESIZE
+========================= */
+
+window.addEventListener(
+    "resize",
+    () => {
+
+        /*
+            Keep the overlay locked to the
+            viewport after orientation changes.
+        */
+
+        if (gameOpen) {
+
+            gameOverlay.style.width =
+                window.innerWidth + "px";
+
+            gameOverlay.style.height =
+                window.innerHeight + "px";
+
+        }
+
+    }
+);
+
+
+/* =========================
+   LOAD
+========================= */
 
 loadGames();
 
