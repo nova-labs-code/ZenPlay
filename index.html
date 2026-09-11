@@ -157,11 +157,6 @@
          * ========================================================
          * PLAYING STATE
          * ========================================================
-         *
-         * When a game is open, the document itself is frozen.
-         *
-         * The game is NOT positioned using scrollY.
-         * It is anchored directly to the document's top-left.
          */
 
         body.playing {
@@ -186,13 +181,12 @@
          * GAME OVERLAY
          * ========================================================
          *
-         * Absolute, not fixed.
-         *
-         * It occupies the layout viewport.
+         * Absolute positioning is intentional.
+         * This avoids the iOS fixed-position touch issue after
+         * rotating between portrait and landscape.
          */
 
         #gameOverlay {
-
             position: absolute;
 
             left: 0;
@@ -212,9 +206,6 @@
 
             z-index: 1000;
 
-            /*
-             * Prevent the game container itself from scrolling.
-             */
             touch-action: none;
         }
 
@@ -226,7 +217,6 @@
          */
 
         #gameFrame {
-
             position: absolute;
 
             left: 0;
@@ -246,9 +236,6 @@
 
             z-index: 1;
 
-            /*
-             * The iframe is clipped by #gameOverlay.
-             */
             max-width: 100%;
             max-height: 100%;
         }
@@ -258,12 +245,9 @@
          * ========================================================
          * GAME CONTROLS
          * ========================================================
-         *
-         * Separate from the iframe.
          */
 
         #gameControls {
-
             position: absolute;
 
             left: 0;
@@ -289,10 +273,11 @@
          * ========================================================
          * EXIT BUTTON
          * ========================================================
+         *
+         * Absolute positioning is intentional.
          */
 
         #exitButton {
-
             position: absolute;
 
             top:
@@ -375,7 +360,6 @@
 
             #gameOverlay,
             #gameControls {
-
                 height: 100vh;
             }
         }
@@ -434,7 +418,8 @@
         <button
             id="exitButton"
             type="button"
-            aria-label="Exit game">
+            aria-label="Exit game"
+            onclick="closeGame()">
 
             Exit
 
@@ -516,7 +501,6 @@
                 const data =
                     await response.json();
 
-
                 gamesContainer.innerHTML =
                     "";
 
@@ -583,13 +567,10 @@
 
         /*
          * ========================================================
-         * GET ACTUAL LAYOUT VIEWPORT
+         * GET LAYOUT VIEWPORT
          * ========================================================
          *
-         * Deliberately NOT using visualViewport.
-         *
-         * This matches the CSS viewport used by the absolute
-         * 100vh game container.
+         * Deliberately does not use visualViewport.
          */
 
         function getViewportSize() {
@@ -621,13 +602,8 @@
 
         /*
          * ========================================================
-         * UPDATE GAME
+         * UPDATE GAME VIEWPORT
          * ========================================================
-         *
-         * The overlay, iframe, and controls all receive
-         * exactly the same dimensions.
-         *
-         * None of them use scrollY.
          */
 
         function updateGameViewport() {
@@ -653,7 +629,7 @@
 
 
             /*
-             * Game container.
+             * Game overlay.
              */
 
             gameOverlay.style.left =
@@ -704,7 +680,8 @@
 
 
             /*
-             * Force WebKit to recalculate layout.
+             * Force WebKit to recalculate
+             * the layout geometry.
              */
 
             void gameOverlay.offsetWidth;
@@ -741,10 +718,6 @@
          * ========================================================
          * ROTATION
          * ========================================================
-         *
-         * Do not trust the first orientationchange measurement.
-         *
-         * iOS can still be changing its layout viewport.
          */
 
         function resyncAfterRotation() {
@@ -760,19 +733,13 @@
 
 
             /*
-             * Temporarily hide the iframe.
-             *
-             * This prevents its old landscape compositing
-             * rectangle from appearing during the transition.
+             * Hide the iframe while iOS finishes
+             * changing its viewport.
              */
 
             gameFrame.style.visibility =
                 "hidden";
 
-
-            /*
-             * Frame 1.
-             */
 
             requestAnimationFrame(
                 () => {
@@ -782,10 +749,6 @@
                     updateGameViewport();
 
 
-                    /*
-                     * Frame 2.
-                     */
-
                     requestAnimationFrame(
                         () => {
 
@@ -794,10 +757,6 @@
                             updateGameViewport();
 
 
-                            /*
-                             * Frame 3.
-                             */
-
                             requestAnimationFrame(
                                 () => {
 
@@ -805,11 +764,6 @@
 
                                     updateGameViewport();
 
-
-                                    /*
-                                     * Let the iOS rotation
-                                     * animation finish.
-                                     */
 
                                     rotationTimer =
                                         setTimeout(
@@ -821,12 +775,6 @@
                                                         forceLayout();
 
                                                         updateGameViewport();
-
-
-                                                        /*
-                                                         * Final
-                                                         * geometry.
-                                                         */
 
                                                         gameFrame.style.visibility =
                                                             "visible";
@@ -909,7 +857,7 @@
 
 
             /*
-             * Completely freeze the Home Screen.
+             * Freeze the Home Screen.
              */
 
             document.documentElement.style.overflow =
@@ -917,7 +865,6 @@
 
             document.body.style.overflow =
                 "hidden";
-
 
             document.body.classList.add(
                 "playing"
@@ -936,8 +883,8 @@
 
 
             /*
-             * Hide iframe while its first viewport
-             * is established.
+             * Hide iframe while its first
+             * viewport is established.
              */
 
             gameFrame.style.visibility =
@@ -964,7 +911,7 @@
 
 
             /*
-             * Establish viewport.
+             * Establish the viewport.
              */
 
             requestAnimationFrame(
@@ -1026,14 +973,12 @@
             gameFrame.src =
                 "about:blank";
 
-
             gameFrame.style.visibility =
                 "hidden";
 
 
             /*
              * Hide game layers.
-
              */
 
             gameOverlay.style.display =
@@ -1045,13 +990,11 @@
 
             /*
              * Restore Home Screen.
-
              */
 
             document.body.classList.remove(
                 "playing"
             );
-
 
             document.body.style.overflow =
                 "";
@@ -1074,39 +1017,6 @@
                 "";
 
         }
-
-
-        /*
-         * ========================================================
-         * EXIT BUTTON
-         * ========================================================
-         */
-
-        exitButton.addEventListener(
-            "click",
-            event => {
-
-                event.preventDefault();
-
-                closeGame();
-
-            }
-        );
-
-
-        exitButton.addEventListener(
-            "pointerup",
-            event => {
-
-                event.preventDefault();
-
-                closeGame();
-
-            },
-            {
-                passive: false
-            }
-        );
 
 
         /*
