@@ -287,8 +287,15 @@
                 );
 
             right:
+                max(
+                    16px,
+                    env(safe-area-inset-right)
+                );
+
+            max-width:
                 calc(
-                    16px +
+                    100% -
+                    32px -
                     env(safe-area-inset-right)
                 );
 
