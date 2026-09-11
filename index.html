@@ -104,6 +104,8 @@
             z-index: 1000;
 
             overflow: hidden;
+
+            touch-action: none;
         }
 
         #gameFrame {
@@ -121,6 +123,8 @@
             background: #000;
 
             z-index: 1001;
+
+            touch-action: auto;
         }
 
         /* Exit button */
@@ -235,11 +239,9 @@ async function loadGames() {
             await fetch("games.json");
 
         if (!response.ok) {
-
             throw new Error(
                 "Could not load games.json"
             );
-
         }
 
         const data =
@@ -255,9 +257,7 @@ async function loadGames() {
             card.className = "game";
 
             card.onclick = () => {
-
                 openGame(game.file);
-
             };
 
             card.innerHTML = `
@@ -288,7 +288,7 @@ async function loadGames() {
 
 
 /*
-    Update the game viewport
+    Update viewport dimensions
 */
 
 function updateGameViewport() {
@@ -317,19 +317,25 @@ function updateGameViewport() {
 
     /*
         Force WebKit to recalculate
-        the layout and hit-testing area.
+        the layout.
     */
 
+    void document.documentElement.offsetHeight;
+
+    void document.body.offsetHeight;
+
     void gameOverlay.offsetWidth;
+
     void gameOverlay.offsetHeight;
 
     void gameFrame.offsetWidth;
+
     void gameFrame.offsetHeight;
 }
 
 
 /*
-    Rebuild the Exit button
+    Rebuild Exit button
 */
 
 function rebuildExitButton() {
@@ -357,6 +363,13 @@ function rebuildExitButton() {
     newButton.textContent =
         "Exit";
 
+    /*
+        Pointer event.
+
+        This is the primary touch
+        path on modern iOS.
+    */
+
     newButton.addEventListener(
         "pointerup",
         event => {
@@ -373,6 +386,34 @@ function rebuildExitButton() {
             passive: false
         }
     );
+
+    /*
+        Touch fallback.
+
+        This gives WebKit a fresh native
+        touch target as well.
+    */
+
+    newButton.addEventListener(
+        "touchend",
+        event => {
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (gameOpen) {
+                closeGame();
+            }
+
+        },
+        {
+            passive: false
+        }
+    );
+
+    /*
+        Click fallback.
+    */
 
     newButton.addEventListener(
         "click",
@@ -396,22 +437,124 @@ function rebuildExitButton() {
         newButton;
 
     /*
-        Force WebKit to create a fresh
-        layout/hit-test region.
+        Force the new button to receive
+        a completely fresh layout box.
     */
 
     void newButton.offsetWidth;
+
     void newButton.offsetHeight;
+
+    void newButton.getBoundingClientRect();
 }
 
 
 /*
-    Wait until the rotation/UI adjustment
-    has completely finished.
+    FORCE TOUCH / LAYOUT RESYNC
+*/
 
-    Every new resize event resets the timer.
-    Therefore the button is not rebuilt
-    while iOS is still changing the UI.
+function forceTouchResync() {
+
+    if (!gameOpen) {
+        return;
+    }
+
+    /*
+        Temporarily remove the overlay from
+        hit testing.
+
+        This makes WebKit discard the old
+        hit-test relationship.
+    */
+
+    gameOverlay.style.pointerEvents =
+        "none";
+
+    /*
+        Force a complete layout flush.
+    */
+
+    void document.documentElement.offsetHeight;
+
+    void document.body.offsetHeight;
+
+    void gameOverlay.offsetHeight;
+
+    /*
+        Recalculate the viewport using the
+        dimensions iOS has now settled on.
+    */
+
+    const width =
+        window.innerWidth;
+
+    const height =
+        window.innerHeight;
+
+    gameOverlay.style.width =
+        width + "px";
+
+    gameOverlay.style.height =
+        height + "px";
+
+    gameFrame.style.width =
+        width + "px";
+
+    gameFrame.style.height =
+        height + "px";
+
+    /*
+        Force another layout flush.
+    */
+
+    void gameOverlay.getBoundingClientRect();
+
+    void gameFrame.getBoundingClientRect();
+
+    /*
+        Destroy the old button and create
+        a completely new touch target.
+    */
+
+    rebuildExitButton();
+
+    /*
+        Force the new button's geometry
+        into WebKit's layout tree.
+    */
+
+    if (exitButton) {
+
+        void exitButton.offsetWidth;
+
+        void exitButton.offsetHeight;
+
+        exitButton.getBoundingClientRect();
+
+    }
+
+    /*
+        Restore hit testing.
+    */
+
+    gameOverlay.style.pointerEvents =
+        "auto";
+
+    /*
+        Final layout flush.
+    */
+
+    void gameOverlay.offsetHeight;
+
+    if (exitButton) {
+        exitButton.getBoundingClientRect();
+    }
+}
+
+
+/*
+    Wait for iOS to completely finish
+    adjusting the UI before resyncing.
 */
 
 function scheduleButtonRebuild() {
@@ -431,16 +574,32 @@ function scheduleButtonRebuild() {
                 return;
             }
 
-            updateGameViewport();
+            /*
+                Wait for two animation frames
+                so the final viewport geometry
+                has actually been committed.
+            */
 
-            rebuildExitButton();
+            requestAnimationFrame(() => {
+
+                requestAnimationFrame(() => {
+
+                    if (!gameOpen) {
+                        return;
+                    }
+
+                    forceTouchResync();
+
+                });
+
+            });
 
         }, 300);
 }
 
 
 /*
-    Rotation
+    Rotation events
 */
 
 window.addEventListener(
@@ -450,8 +609,8 @@ window.addEventListener(
 
 
 /*
-    iOS can emit resize events while
-    the orientation is changing.
+    iOS sends resize events during
+    orientation changes.
 */
 
 window.addEventListener(
@@ -461,9 +620,7 @@ window.addEventListener(
 
 
 /*
-    Also listen to visualViewport because
-    standalone iOS Web Apps can resize their
-    visual viewport during rotation.
+    Track the visual viewport too.
 */
 
 if (window.visualViewport) {
@@ -483,27 +640,27 @@ if (window.visualViewport) {
 function openGame(file) {
 
     /*
-        Save the exact scroll position.
+        Save exact scroll position.
     */
 
     savedScrollPosition =
         window.scrollY;
 
     /*
-        Mark the game as open.
+        Mark game as open.
     */
 
     gameOpen = true;
 
     /*
-        Hide the games container.
+        Hide games.
     */
 
     gamesContainer.style.display =
         "none";
 
     /*
-        Make the page black.
+        Make page black.
     */
 
     document.body.classList.add(
@@ -511,35 +668,41 @@ function openGame(file) {
     );
 
     /*
-        Show the game.
+        Show game overlay.
     */
 
     gameOverlay.style.display =
         "block";
 
     /*
-        Prevent scrolling.
+        Allow overlay hit testing.
+    */
+
+    gameOverlay.style.pointerEvents =
+        "auto";
+
+    /*
+        Prevent page scrolling.
     */
 
     document.body.style.overflow =
         "hidden";
 
     /*
-        Load the game.
+        Load game.
     */
 
     gameFrame.src =
         file;
 
     /*
-        Set the initial viewport.
+        Set initial viewport.
     */
 
     updateGameViewport();
 
     /*
-        Create a fresh Exit button
-        for the new game session.
+        Create a fresh Exit button.
     */
 
     rebuildExitButton();
@@ -558,13 +721,15 @@ function closeGame() {
     }
 
     /*
-        Mark the game as closed first.
+        Mark closed first so any pending
+        resize/rebuild cannot recreate
+        the button.
     */
 
     gameOpen = false;
 
     /*
-        Cancel any pending rebuild.
+        Cancel pending rebuild.
     */
 
     clearTimeout(
@@ -574,27 +739,34 @@ function closeGame() {
     rebuildTimer = null;
 
     /*
-        Stop the game.
+        Stop game.
     */
 
     gameFrame.src = "";
 
     /*
-        Hide the game.
+        Disable overlay hit testing.
+    */
+
+    gameOverlay.style.pointerEvents =
+        "none";
+
+    /*
+        Hide game.
     */
 
     gameOverlay.style.display =
         "none";
 
     /*
-        Restore the games container.
+        Restore games.
     */
 
     gamesContainer.style.display =
         "";
 
     /*
-        Restore the normal background.
+        Restore normal background.
     */
 
     document.body.classList.remove(
@@ -609,8 +781,7 @@ function closeGame() {
         "";
 
     /*
-        Restore the exact position
-        the user was at before opening.
+        Restore exact scroll position.
     */
 
     requestAnimationFrame(() => {
@@ -626,7 +797,7 @@ function closeGame() {
 
 
 /*
-    Start loading games.
+    Start.
 */
 
 loadGames();
