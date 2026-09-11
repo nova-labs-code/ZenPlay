@@ -138,6 +138,53 @@
             color: #6f7688;
         }
 
+        /*
+         * ========================================================
+         * FOOTER
+         * ========================================================
+         */
+
+        .site-footer {
+            width: 100%;
+            max-width: 900px;
+
+            margin: 60px auto 0;
+            padding: 30px 0 10px;
+
+            border-top: 1px solid #242733;
+
+            text-align: center;
+
+            color: #6f7688;
+        }
+
+        .footer-content {
+            display: flex;
+
+            flex-direction: row;
+
+            justify-content: center;
+            align-items: center;
+
+            gap: 10px;
+
+            font-size: 0.85rem;
+
+            line-height: 1.5;
+        }
+
+        .footer-link {
+            color: #9da3b4;
+
+            text-decoration: none;
+        }
+
+        .footer-link:hover {
+            color: #ffffff;
+
+            text-decoration: underline;
+        }
+
         body.playing {
             padding: 0;
             margin: 0;
@@ -150,7 +197,8 @@
             background: #000;
         }
 
-        body.playing .container {
+        body.playing .container,
+        body.playing .site-footer {
             display: none;
         }
 
@@ -307,6 +355,7 @@
             #gameControls {
                 height: 100vh;
             }
+
         }
 
     </style>
@@ -332,6 +381,36 @@
         </div>
 
     </div>
+
+    <footer class="site-footer">
+
+        <div class="footer-content">
+
+            <a
+                class="footer-link"
+                href="https://nova-labs-code.github.io/"
+            >
+                <strong>
+                    Nova Labs Code
+                </strong>
+            </a>
+
+            <span>
+                ·
+            </span>
+
+            <a
+                class="footer-link"
+                href="license.html"
+            >
+                <strong>
+                    License
+                </strong>
+            </a>
+
+        </div>
+
+    </footer>
 
     <div id="gameOverlay">
 
