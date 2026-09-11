@@ -3,91 +3,119 @@
 <head>
     <meta charset="UTF-8">
 
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
-    >
+    <meta name="viewport"
+        content="width=device-width,
+        initial-scale=1.0,
+        maximum-scale=1.0,
+        user-scalable=no,
+        viewport-fit=cover">
 
     <title>ZenPlay</title>
 
     <style>
+        * {
+            box-sizing: border-box;
+        }
+
         html,
         body {
             margin: 0;
-            padding: 0;
+            width: 100%;
             min-height: 100%;
-            background: #111;
-            color: #fff;
             font-family: Arial, sans-serif;
+            background: #08090d;
+            color: white;
         }
 
         body {
-            overflow-x: hidden;
+            padding: 40px 20px;
         }
 
-        body.playing {
-            background: #000;
-            padding: 0;
-            overflow: hidden;
+        .container {
+            max-width: 900px;
+            margin: auto;
         }
 
-        #games {
+        h1 {
+            font-size: 3rem;
+            margin: 0 0 10px;
+        }
+
+        .subtitle {
+            color: #9da3b4;
+            font-size: 1.1rem;
+            margin-bottom: 40px;
+        }
+
+        .games {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 16px;
-            padding: 20px;
+            grid-template-columns: repeat(
+                auto-fit,
+                minmax(240px, 1fr)
+            );
+            gap: 20px;
         }
 
         .game {
-            background: #1d1d1d;
-            border-radius: 14px;
-            padding: 20px;
+            padding: 25px;
+            border-radius: 18px;
+            background: #11131a;
+            border: 1px solid #242733;
+            color: white;
             cursor: pointer;
-            user-select: none;
-            -webkit-user-select: none;
-            -webkit-tap-highlight-color: transparent;
+            transition:
+                transform 0.2s,
+                border-color 0.2s;
+        }
+
+        .game:hover {
+            transform: translateY(-4px);
+            border-color: #4d556b;
         }
 
         .game h2 {
-            margin: 0 0 8px;
+            margin: 0 0 10px;
         }
 
         .game p {
-            margin: 0;
-            color: #aaa;
+            margin: 0 0 15px;
+            color: #9da3b4;
+            line-height: 1.5;
+        }
+
+        .game-info {
+            font-size: 0.85rem;
+            color: #6f7688;
         }
 
         /* Game overlay */
+
         #gameOverlay {
             position: fixed;
             inset: 0;
 
             width: 100vw;
-            width: 100dvw;
-
             height: 100vh;
-            height: 100dvh;
 
             background: #000;
 
             display: none;
 
-            overflow: hidden;
-
             z-index: 1000;
 
-            isolation: isolate;
+            overflow: hidden;
         }
 
-        /* Game */
         #gameFrame {
             position: absolute;
+
             inset: 0;
 
             width: 100%;
             height: 100%;
 
             border: none;
+
             display: block;
 
             background: #000;
@@ -95,12 +123,8 @@
             z-index: 1001;
         }
 
-        /*
-         * Exit button.
-         *
-         * This element is intentionally removed and recreated
-         * after orientation changes.
-         */
+        /* Exit button */
+
         #exitButton {
             position: fixed;
 
@@ -114,674 +138,538 @@
             border: none;
             border-radius: 10px;
 
-            background: rgba(20, 20, 25, 0.9);
-            color: #fff;
+            background: rgba(20, 20, 25, 0.85);
+            color: white;
 
-            font: 15px Arial, sans-serif;
+            font-size: 15px;
 
             cursor: pointer;
 
             -webkit-tap-highlight-color: transparent;
-
             touch-action: manipulation;
-
             pointer-events: auto;
 
             user-select: none;
             -webkit-user-select: none;
         }
 
-        #exitButton:active {
-            opacity: 0.7;
+        #exitButton:hover {
+            background: rgba(40, 40, 48, 0.95);
+        }
+
+        /* Black page while playing */
+
+        body.playing {
+            background: #000;
+            padding: 0;
         }
     </style>
 </head>
 
 <body>
 
-    <div id="games"></div>
+<div class="container">
 
-    <div id="gameOverlay">
+    <h1>ZenPlay</h1>
 
-        <iframe
-            id="gameFrame"
-            title="Game"
-            allow="fullscreen; autoplay"
-        ></iframe>
+    <p class="subtitle">
+        Simple, satisfying games.
+    </p>
 
+    <div class="games" id="games">
+        Loading games...
     </div>
 
+</div>
 
-    <script>
-        const gamesContainer =
-            document.getElementById("games");
+<!-- Game overlay -->
 
-        const gameOverlay =
-            document.getElementById("gameOverlay");
+<div id="gameOverlay">
 
-        const gameFrame =
-            document.getElementById("gameFrame");
+    <button
+        id="exitButton"
+        type="button">
+        Exit
+    </button>
 
+    <iframe
+        id="gameFrame"
+        allow="fullscreen">
+    </iframe>
 
-        let savedScrollPosition = 0;
-        let gameOpen = false;
-        let currentGameFile = null;
+</div>
 
+<script>
 
-        /*
-         * Load games.
-         */
-        async function loadGames() {
-            try {
-                const response =
-                    await fetch("games.json", {
-                        cache: "no-cache"
-                    });
+const gamesContainer =
+    document.getElementById("games");
 
-                const games =
-                    await response.json();
+const gameOverlay =
+    document.getElementById("gameOverlay");
 
-                gamesContainer.innerHTML = "";
+const gameFrame =
+    document.getElementById("gameFrame");
 
-                games.forEach(game => {
-                    const card =
-                        document.createElement("div");
+let exitButton =
+    document.getElementById("exitButton");
 
-                    card.className = "game";
+let savedScrollPosition = 0;
 
-                    const title =
-                        document.createElement("h2");
-
-                    title.textContent =
-                        game.name;
-
-                    const description =
-                        document.createElement("p");
-
-                    description.textContent =
-                        game.description || "";
-
-                    card.appendChild(title);
-                    card.appendChild(description);
-
-                    card.addEventListener(
-                        "click",
-                        () => {
-                            openGame(game.file);
-                        }
-                    );
-
-                    gamesContainer.appendChild(card);
-                });
+let gameOpen = false;
 
 
-                /*
-                 * Restore an open game after
-                 * returning to the web app.
-                 */
-                if (
-                    location.hash === "#game" &&
-                    sessionStorage.getItem(
-                        "zenplay-current-game"
-                    )
-                ) {
-                    const file =
-                        sessionStorage.getItem(
-                            "zenplay-current-game"
-                        );
+/*
+    Rebuild the Exit button.
 
-                    const saved =
-                        sessionStorage.getItem(
-                            "zenplay-scroll-position"
-                        );
+    iOS Safari/WebKit can keep stale touch-hit
+    geometry after a device rotation.
 
-                    if (saved !== null) {
-                        savedScrollPosition =
-                            Number(saved);
-                    }
+    Removing the old button and creating a
+    completely new one forces WebKit to create
+    a fresh hit-test region.
+*/
 
-                    showGame(file);
-                }
+function rebuildExitButton() {
 
-            } catch (error) {
-                console.error(
-                    "Failed to load games:",
-                    error
-                );
+    if (!gameOpen) {
+        return;
+    }
+
+    const oldButton =
+        document.getElementById("exitButton");
+
+    if (oldButton) {
+        oldButton.remove();
+    }
+
+    const newButton =
+        document.createElement("button");
+
+    newButton.id = "exitButton";
+
+    newButton.type = "button";
+
+    newButton.textContent = "Exit";
+
+
+    /*
+        Use pointerup for touch devices.
+    */
+
+    newButton.addEventListener(
+        "pointerup",
+        event => {
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (gameOpen) {
+                closeGame();
             }
+
+        },
+        {
+            passive: false
+        }
+    );
+
+
+    /*
+        Click fallback for desktop.
+    */
+
+    newButton.addEventListener(
+        "click",
+        event => {
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (gameOpen) {
+                closeGame();
+            }
+
+        }
+    );
+
+
+    gameOverlay.appendChild(newButton);
+
+    exitButton = newButton;
+
+
+    /*
+        Force WebKit to calculate the new
+        element's layout immediately.
+    */
+
+    void newButton.offsetWidth;
+    void newButton.offsetHeight;
+
+}
+
+
+/*
+    Update the game viewport after rotation.
+*/
+
+function updateGameViewport() {
+
+    if (!gameOpen) {
+        return;
+    }
+
+    const width =
+        window.innerWidth;
+
+    const height =
+        window.innerHeight;
+
+
+    gameOverlay.style.width =
+        width + "px";
+
+    gameOverlay.style.height =
+        height + "px";
+
+
+    gameFrame.style.width =
+        width + "px";
+
+    gameFrame.style.height =
+        height + "px";
+
+
+    /*
+        Force a fresh layout calculation.
+    */
+
+    void gameOverlay.offsetWidth;
+    void gameOverlay.offsetHeight;
+
+    void gameFrame.offsetWidth;
+    void gameFrame.offsetHeight;
+
+}
+
+
+/*
+    Rebuild after rotation.
+
+    Multiple passes are intentional because iOS
+    can update its viewport geometry in stages.
+*/
+
+function rebuildAfterRotation() {
+
+    if (!gameOpen) {
+        return;
+    }
+
+    updateGameViewport();
+
+    rebuildExitButton();
+
+
+    requestAnimationFrame(() => {
+
+        updateGameViewport();
+        rebuildExitButton();
+
+    });
+
+
+    setTimeout(() => {
+
+        updateGameViewport();
+        rebuildExitButton();
+
+    }, 50);
+
+
+    setTimeout(() => {
+
+        updateGameViewport();
+        rebuildExitButton();
+
+    }, 150);
+
+
+    setTimeout(() => {
+
+        updateGameViewport();
+        rebuildExitButton();
+
+    }, 300);
+
+
+    setTimeout(() => {
+
+        updateGameViewport();
+        rebuildExitButton();
+
+    }, 500);
+
+}
+
+
+/*
+    Orientation changes.
+*/
+
+window.addEventListener(
+    "orientationchange",
+    rebuildAfterRotation
+);
+
+
+/*
+    Resize also catches viewport changes
+    that may not fire orientationchange.
+*/
+
+window.addEventListener(
+    "resize",
+    () => {
+
+        if (!gameOpen) {
+            return;
         }
 
+        updateGameViewport();
 
-        /*
-         * Open a game.
-         */
-        function openGame(file) {
-            savedScrollPosition =
-                window.scrollY;
-
-            currentGameFile = file;
-
-            sessionStorage.setItem(
-                "zenplay-current-game",
-                file
-            );
-
-            sessionStorage.setItem(
-                "zenplay-scroll-position",
-                String(savedScrollPosition)
-            );
+    }
+);
 
 
-            history.pushState(
-                {
-                    zenplayGame: true
-                },
-                "",
-                location.pathname +
-                location.search +
-                "#game"
-            );
+/*
+    iOS visual viewport changes.
+*/
 
+if (window.visualViewport) {
 
-            showGame(file);
-        }
+    window.visualViewport.addEventListener(
+        "resize",
+        () => {
 
+            if (!gameOpen) {
+                return;
+            }
 
-        /*
-         * Show the game.
-         */
-        function showGame(file) {
-            currentGameFile = file;
-
-            gameOpen = true;
-
-            gamesContainer.style.display =
-                "none";
-
-            document.body.classList.add(
-                "playing"
-            );
-
-            document.body.style.overflow =
-                "hidden";
-
-            gameOverlay.style.display =
-                "block";
-
-
-            /*
-             * Set the correct viewport size.
-             */
             updateGameViewport();
 
+        }
+    );
 
-            /*
-             * Load the game.
-             */
-            gameFrame.src = file;
+}
 
 
-            /*
-             * Create a fresh Exit button.
-             */
-            rebuildExitButton();
+async function loadGames() {
+
+    try {
+
+        const response =
+            await fetch("games.json");
+
+        if (!response.ok) {
+            throw new Error(
+                "Could not load games.json"
+            );
         }
 
+        const data =
+            await response.json();
 
-        /*
-         * Completely remove and recreate
-         * the Exit button.
-         *
-         * This is the important iOS fix.
-         */
-        function rebuildExitButton() {
-            if (!gameOpen) {
-                return;
-            }
-
-
-            /*
-             * Remove the old button.
-             */
-            const oldButton =
-                document.getElementById(
-                    "exitButton"
-                );
-
-            if (oldButton) {
-                oldButton.remove();
-            }
-
-
-            /*
-             * Create a completely new button.
-             */
-            const newButton =
-                document.createElement(
-                    "button"
-                );
-
-
-            newButton.id =
-                "exitButton";
-
-            newButton.type =
-                "button";
+        gamesContainer.innerHTML = "";
 
-            newButton.textContent =
-                "Exit";
+        data.games.forEach(game => {
 
+            const card =
+                document.createElement("div");
 
-            /*
-             * Pointer event.
-             */
-            newButton.addEventListener(
-                "pointerup",
-                event => {
-                    event.preventDefault();
+            card.className = "game";
 
-                    if (gameOpen) {
-                        closeGame();
-                    }
-                },
-                {
-                    passive: false
-                }
-            );
+            card.onclick = () => {
+                openGame(game.file);
+            };
 
+            card.innerHTML = `
+                <h2>${game.name}</h2>
 
-            /*
-             * Click fallback.
-             */
-            newButton.addEventListener(
-                "click",
-                event => {
-                    event.preventDefault();
+                <p>
+                    ${game.description}
+                </p>
 
-                    if (gameOpen) {
-                        closeGame();
-                    }
-                }
-            );
-
-
-            /*
-             * Put the new button directly
-             * into the overlay, above the iframe.
-             */
-            gameOverlay.appendChild(
-                newButton
-            );
-
-
-            /*
-             * Force WebKit to calculate
-             * the new element's geometry.
-             */
-            void newButton.offsetTop;
-            void newButton.offsetLeft;
-            void newButton.offsetWidth;
-            void newButton.offsetHeight;
-
+                <div class="game-info">
+                    ${game.category} · ${game.type}
+                </div>
+            `;
 
-            /*
-             * Force another layout pass.
-             */
-            requestAnimationFrame(() => {
-                if (!gameOpen) {
-                    return;
-                }
+            gamesContainer.appendChild(card);
 
-                void newButton.offsetWidth;
-                void newButton.offsetHeight;
-            });
-        }
+        });
 
+    } catch (error) {
 
-        /*
-         * Update viewport dimensions.
-         */
-        function updateGameViewport() {
-            if (!gameOpen) {
-                return;
-            }
+        gamesContainer.innerHTML =
+            "Unable to load games.";
 
+        console.error(error);
 
-            const width =
-                window.innerWidth;
+    }
+}
 
-            const height =
-                window.innerHeight;
 
+function openGame(file) {
 
-            gameOverlay.style.width =
-                width + "px";
+    /*
+        Save the exact scroll position.
+    */
 
-            gameOverlay.style.height =
-                height + "px";
+    savedScrollPosition =
+        window.scrollY;
 
 
-            gameFrame.style.width =
-                width + "px";
+    /*
+        Mark the game as open BEFORE
+        rebuilding the button.
+    */
 
-            gameFrame.style.height =
-                height + "px";
+    gameOpen = true;
 
 
-            /*
-             * Force layout.
-             */
-            void gameOverlay.offsetWidth;
-            void gameOverlay.offsetHeight;
+    /*
+        Hide the games container.
+    */
 
-            void gameFrame.offsetWidth;
-            void gameFrame.offsetHeight;
-        }
+    gamesContainer.style.display =
+        "none";
 
 
-        /*
-         * Close game.
-         */
-        function closeGame() {
-            if (!gameOpen) {
-                return;
-            }
+    /*
+        Make the page black.
+    */
 
+    document.body.classList.add(
+        "playing"
+    );
 
-            finishCloseGame();
 
+    /*
+        Show the game.
+    */
 
-            /*
-             * Remove #game without creating
-             * another history entry.
-             */
-            if (location.hash === "#game") {
-                history.replaceState(
-                    null,
-                    "",
-                    location.pathname +
-                    location.search
-                );
-            }
-        }
+    gameOverlay.style.display =
+        "block";
 
 
-        /*
-         * Finish closing.
-         */
-        function finishCloseGame() {
-            gameOpen = false;
+    /*
+        Prevent scrolling.
+    */
 
-            currentGameFile = null;
+    document.body.style.overflow =
+        "hidden";
 
 
-            /*
-             * Remove the Exit button.
-             */
-            const exitButton =
-                document.getElementById(
-                    "exitButton"
-                );
+    /*
+        Load the game.
+    */
 
-            if (exitButton) {
-                exitButton.remove();
-            }
+    gameFrame.src =
+        file;
 
 
-            /*
-             * Stop the game.
-             */
-            gameFrame.src = "";
+    /*
+        Build a fresh Exit button.
+    */
 
+    rebuildExitButton();
 
-            /*
-             * Hide overlay.
-             */
-            gameOverlay.style.display =
-                "none";
 
+    /*
+        Make sure the viewport geometry
+        is correct when opening.
+    */
 
-            /*
-             * Show game list.
-             */
-            gamesContainer.style.display =
-                "";
+    updateGameViewport();
 
+}
 
-            document.body.classList.remove(
-                "playing"
-            );
 
-            document.body.style.overflow =
-                "";
+function closeGame() {
 
+    /*
+        Prevent duplicate close events.
+    */
 
-            /*
-             * Clear session state.
-             */
-            sessionStorage.removeItem(
-                "zenplay-current-game"
-            );
+    if (!gameOpen) {
+        return;
+    }
 
-            sessionStorage.removeItem(
-                "zenplay-scroll-position"
-            );
+    gameOpen = false;
 
 
-            /*
-             * Restore scroll.
-             */
-            requestAnimationFrame(() => {
-                window.scrollTo(
-                    0,
-                    savedScrollPosition
-                );
-            });
-        }
+    /*
+        Stop the game.
+    */
 
+    gameFrame.src = "";
 
-        /*
-         * Browser/system Back.
-         */
-        window.addEventListener(
-            "popstate",
-            () => {
-                if (
-                    gameOpen &&
-                    location.hash !== "#game"
-                ) {
-                    finishCloseGame();
-                }
-            }
+
+    /*
+        Hide the game.
+    */
+
+    gameOverlay.style.display =
+        "none";
+
+
+    /*
+        Restore the games container.
+    */
+
+    gamesContainer.style.display =
+        "";
+
+
+    /*
+        Restore the normal background.
+    */
+
+    document.body.classList.remove(
+        "playing"
+    );
+
+
+    /*
+        Restore scrolling.
+    */
+
+    document.body.style.overflow =
+        "";
+
+
+    /*
+        Restore the exact position
+        the user was at before opening
+        the game.
+    */
+
+    requestAnimationFrame(() => {
+
+        window.scrollTo(
+            0,
+            savedScrollPosition
         );
 
+    });
 
-        /*
-         * Hash changes.
-         */
-        window.addEventListener(
-            "hashchange",
-            () => {
-                if (
-                    gameOpen &&
-                    location.hash !== "#game"
-                ) {
-                    finishCloseGame();
-                }
-            }
-        );
+}
 
 
-        /*
-         * Restore after pageshow.
-         */
-        window.addEventListener(
-            "pageshow",
-            () => {
-                if (
-                    location.hash === "#game" &&
-                    sessionStorage.getItem(
-                        "zenplay-current-game"
-                    )
-                ) {
-                    const file =
-                        sessionStorage.getItem(
-                            "zenplay-current-game"
-                        );
+loadGames();
 
-                    showGame(file);
-                }
-            }
-        );
-
-
-        /*
-         * Resize.
-         *
-         * Rebuild the button instead of
-         * merely moving the old one.
-         */
-        window.addEventListener(
-            "resize",
-            () => {
-                if (!gameOpen) {
-                    return;
-                }
-
-
-                updateGameViewport();
-
-                rebuildExitButton();
-
-
-                setTimeout(() => {
-                    if (!gameOpen) {
-                        return;
-                    }
-
-                    updateGameViewport();
-                    rebuildExitButton();
-
-                }, 100);
-
-
-                setTimeout(() => {
-                    if (!gameOpen) {
-                        return;
-                    }
-
-                    updateGameViewport();
-                    rebuildExitButton();
-
-                }, 300);
-            }
-        );
-
-
-        /*
-         * Orientation change.
-         *
-         * REMOVE OLD BUTTON
-         *        ↓
-         * REBUILD BUTTON
-         *        ↓
-         * WAIT FOR iOS
-         *        ↓
-         * REBUILD AGAIN
-         */
-        window.addEventListener(
-            "orientationchange",
-            () => {
-                if (!gameOpen) {
-                    return;
-                }
-
-
-                /*
-                 * Immediately rebuild.
-                 */
-                updateGameViewport();
-
-                rebuildExitButton();
-
-
-                /*
-                 * iOS may still be changing
-                 * the viewport at this point.
-                 */
-                setTimeout(() => {
-                    if (!gameOpen) {
-                        return;
-                    }
-
-                    updateGameViewport();
-                    rebuildExitButton();
-
-                }, 50);
-
-
-                setTimeout(() => {
-                    if (!gameOpen) {
-                        return;
-                    }
-
-                    updateGameViewport();
-                    rebuildExitButton();
-
-                }, 150);
-
-
-                setTimeout(() => {
-                    if (!gameOpen) {
-                        return;
-                    }
-
-                    updateGameViewport();
-                    rebuildExitButton();
-
-                }, 300);
-
-
-                setTimeout(() => {
-                    if (!gameOpen) {
-                        return;
-                    }
-
-                    updateGameViewport();
-                    rebuildExitButton();
-
-                }, 500);
-            }
-        );
-
-
-        /*
-         * iOS visualViewport.
-         *
-         * This catches viewport changes that
-         * don't always behave like normal resize.
-         */
-        if (window.visualViewport) {
-            window.visualViewport.addEventListener(
-                "resize",
-                () => {
-                    if (!gameOpen) {
-                        return;
-                    }
-
-                    updateGameViewport();
-
-                    rebuildExitButton();
-                }
-            );
-        }
-
-
-        /*
-         * Start ZenPlay.
-         */
-        loadGames();
-    </script>
+</script>
 
 </body>
-</html>
+</html>#
