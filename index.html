@@ -57,9 +57,7 @@
             color: #aaa;
         }
 
-        /*
-         * Full-screen game layer.
-         */
+        /* Game overlay */
         #gameOverlay {
             position: fixed;
             inset: 0;
@@ -71,17 +69,17 @@
             height: 100dvh;
 
             background: #000;
+
             display: none;
 
             overflow: hidden;
+
             z-index: 1000;
 
             isolation: isolate;
         }
 
-        /*
-         * Game iframe.
-         */
+        /* Game */
         #gameFrame {
             position: absolute;
             inset: 0;
@@ -98,7 +96,10 @@
         }
 
         /*
-         * The button is dynamically rebuilt after orientation changes.
+         * Exit button.
+         *
+         * This element is intentionally removed and recreated
+         * after orientation changes.
          */
         #exitButton {
             position: fixed;
@@ -116,13 +117,14 @@
             background: rgba(20, 20, 25, 0.9);
             color: #fff;
 
-            font-size: 15px;
-            font-family: Arial, sans-serif;
+            font: 15px Arial, sans-serif;
 
             cursor: pointer;
 
             -webkit-tap-highlight-color: transparent;
+
             touch-action: manipulation;
+
             pointer-events: auto;
 
             user-select: none;
@@ -140,12 +142,15 @@
     <div id="games"></div>
 
     <div id="gameOverlay">
+
         <iframe
             id="gameFrame"
             title="Game"
             allow="fullscreen; autoplay"
         ></iframe>
+
     </div>
+
 
     <script>
         const gamesContainer =
@@ -157,6 +162,7 @@
         const gameFrame =
             document.getElementById("gameFrame");
 
+
         let savedScrollPosition = 0;
         let gameOpen = false;
         let currentGameFile = null;
@@ -167,37 +173,57 @@
          */
         async function loadGames() {
             try {
-                const response = await fetch("games.json", {
-                    cache: "no-cache"
-                });
+                const response =
+                    await fetch("games.json", {
+                        cache: "no-cache"
+                    });
 
-                const games = await response.json();
+                const games =
+                    await response.json();
 
                 gamesContainer.innerHTML = "";
 
                 games.forEach(game => {
-                    const card = document.createElement("div");
+                    const card =
+                        document.createElement("div");
 
                     card.className = "game";
 
-                    card.innerHTML = `
-                        <h2>${game.name}</h2>
-                        <p>${game.description || ""}</p>
-                    `;
+                    const title =
+                        document.createElement("h2");
 
-                    card.addEventListener("click", () => {
-                        openGame(game.file);
-                    });
+                    title.textContent =
+                        game.name;
+
+                    const description =
+                        document.createElement("p");
+
+                    description.textContent =
+                        game.description || "";
+
+                    card.appendChild(title);
+                    card.appendChild(description);
+
+                    card.addEventListener(
+                        "click",
+                        () => {
+                            openGame(game.file);
+                        }
+                    );
 
                     gamesContainer.appendChild(card);
                 });
 
+
                 /*
-                 * Restore game after returning to the web app.
+                 * Restore an open game after
+                 * returning to the web app.
                  */
                 if (
                     location.hash === "#game" &&
-                    sessionStorage.getItem("zenplay-current-game")
+                    sessionStorage.getItem(
+                        "zenplay-current-game"
+                    )
                 ) {
                     const file =
                         sessionStorage.getItem(
@@ -245,6 +271,7 @@
                 String(savedScrollPosition)
             );
 
+
             history.pushState(
                 {
                     zenplayGame: true
@@ -255,6 +282,7 @@
                 "#game"
             );
 
+
             showGame(file);
         }
 
@@ -264,63 +292,85 @@
          */
         function showGame(file) {
             currentGameFile = file;
+
             gameOpen = true;
 
-            gamesContainer.style.display = "none";
+            gamesContainer.style.display =
+                "none";
 
-            document.body.classList.add("playing");
+            document.body.classList.add(
+                "playing"
+            );
 
-            document.body.style.overflow = "hidden";
+            document.body.style.overflow =
+                "hidden";
 
-            gameOverlay.style.display = "block";
+            gameOverlay.style.display =
+                "block";
+
 
             /*
-             * Set the iframe dimensions.
+             * Set the correct viewport size.
              */
             updateGameViewport();
+
 
             /*
              * Load the game.
              */
             gameFrame.src = file;
 
+
             /*
-             * Build a completely fresh Exit button.
+             * Create a fresh Exit button.
              */
             rebuildExitButton();
         }
 
 
         /*
-         * Completely destroy and recreate the Exit button.
+         * Completely remove and recreate
+         * the Exit button.
          *
-         * This is intentional.
-         *
-         * iOS standalone Web Apps can retain stale hit-test
-         * geometry after an orientation change. Removing the
-         * element and inserting a new one forces WebKit to
-         * create a fresh touch target.
+         * This is the important iOS fix.
          */
         function rebuildExitButton() {
             if (!gameOpen) {
                 return;
             }
 
+
+            /*
+             * Remove the old button.
+             */
             const oldButton =
-                document.getElementById("exitButton");
+                document.getElementById(
+                    "exitButton"
+                );
 
             if (oldButton) {
                 oldButton.remove();
             }
 
+
+            /*
+             * Create a completely new button.
+             */
             const newButton =
-                document.createElement("button");
+                document.createElement(
+                    "button"
+                );
 
-            newButton.id = "exitButton";
 
-            newButton.type = "button";
+            newButton.id =
+                "exitButton";
 
-            newButton.textContent = "Exit";
+            newButton.type =
+                "button";
+
+            newButton.textContent =
+                "Exit";
+
 
             /*
              * Pointer event.
@@ -339,6 +389,7 @@
                 }
             );
 
+
             /*
              * Click fallback.
              */
@@ -353,23 +404,28 @@
                 }
             );
 
-            /*
-             * Add the new button directly to the game overlay.
-             *
-             * This places it above the iframe.
-             */
-            gameOverlay.appendChild(newButton);
 
             /*
-             * Force layout calculation immediately.
+             * Put the new button directly
+             * into the overlay, above the iframe.
+             */
+            gameOverlay.appendChild(
+                newButton
+            );
+
+
+            /*
+             * Force WebKit to calculate
+             * the new element's geometry.
              */
             void newButton.offsetTop;
             void newButton.offsetLeft;
             void newButton.offsetWidth;
             void newButton.offsetHeight;
 
+
             /*
-             * Force another layout pass on iOS.
+             * Force another layout pass.
              */
             requestAnimationFrame(() => {
                 if (!gameOpen) {
@@ -383,12 +439,13 @@
 
 
         /*
-         * Update the game viewport.
+         * Update viewport dimensions.
          */
         function updateGameViewport() {
             if (!gameOpen) {
                 return;
             }
+
 
             const width =
                 window.innerWidth;
@@ -396,17 +453,20 @@
             const height =
                 window.innerHeight;
 
+
             gameOverlay.style.width =
                 width + "px";
 
             gameOverlay.style.height =
                 height + "px";
 
+
             gameFrame.style.width =
                 width + "px";
 
             gameFrame.style.height =
                 height + "px";
+
 
             /*
              * Force layout.
@@ -420,18 +480,20 @@
 
 
         /*
-         * Close the game.
+         * Close game.
          */
         function closeGame() {
             if (!gameOpen) {
                 return;
             }
 
+
             finishCloseGame();
 
+
             /*
-             * Return the URL to the normal page without
-             * creating another history entry.
+             * Remove #game without creating
+             * another history entry.
              */
             if (location.hash === "#game") {
                 history.replaceState(
@@ -445,40 +507,57 @@
 
 
         /*
-         * Finish closing the game.
+         * Finish closing.
          */
         function finishCloseGame() {
             gameOpen = false;
+
             currentGameFile = null;
 
+
             /*
-             * Remove the dynamically-created button.
+             * Remove the Exit button.
              */
             const exitButton =
-                document.getElementById("exitButton");
+                document.getElementById(
+                    "exitButton"
+                );
 
             if (exitButton) {
                 exitButton.remove();
             }
+
 
             /*
              * Stop the game.
              */
             gameFrame.src = "";
 
+
             /*
-             * Hide game UI.
+             * Hide overlay.
              */
-            gameOverlay.style.display = "none";
+            gameOverlay.style.display =
+                "none";
 
-            gamesContainer.style.display = "";
-
-            document.body.classList.remove("playing");
-
-            document.body.style.overflow = "";
 
             /*
-             * Clear saved game state.
+             * Show game list.
+             */
+            gamesContainer.style.display =
+                "";
+
+
+            document.body.classList.remove(
+                "playing"
+            );
+
+            document.body.style.overflow =
+                "";
+
+
+            /*
+             * Clear session state.
              */
             sessionStorage.removeItem(
                 "zenplay-current-game"
@@ -488,8 +567,9 @@
                 "zenplay-scroll-position"
             );
 
+
             /*
-             * Restore scroll position.
+             * Restore scroll.
              */
             requestAnimationFrame(() => {
                 window.scrollTo(
@@ -533,7 +613,7 @@
 
 
         /*
-         * iOS pageshow handling.
+         * Restore after pageshow.
          */
         window.addEventListener(
             "pageshow",
@@ -556,9 +636,10 @@
 
 
         /*
-         * Normal viewport resize.
+         * Resize.
          *
-         * Rebuild instead of simply moving the button.
+         * Rebuild the button instead of
+         * merely moving the old one.
          */
         window.addEventListener(
             "resize",
@@ -567,22 +648,31 @@
                     return;
                 }
 
+
                 updateGameViewport();
 
                 rebuildExitButton();
 
-                setTimeout(() => {
-                    if (gameOpen) {
-                        updateGameViewport();
-                        rebuildExitButton();
-                    }
-                }, 100);
 
                 setTimeout(() => {
-                    if (gameOpen) {
-                        updateGameViewport();
-                        rebuildExitButton();
+                    if (!gameOpen) {
+                        return;
                     }
+
+                    updateGameViewport();
+                    rebuildExitButton();
+
+                }, 100);
+
+
+                setTimeout(() => {
+                    if (!gameOpen) {
+                        return;
+                    }
+
+                    updateGameViewport();
+                    rebuildExitButton();
+
                 }, 300);
             }
         );
@@ -591,15 +681,13 @@
         /*
          * Orientation change.
          *
-         * The important part:
-         *
-         * OLD BUTTON
-         *     ↓
-         * REMOVE
-         *     ↓
-         * NEW BUTTON
-         *     ↓
-         * NEW iOS HIT REGION
+         * REMOVE OLD BUTTON
+         *        ↓
+         * REBUILD BUTTON
+         *        ↓
+         * WAIT FOR iOS
+         *        ↓
+         * REBUILD AGAIN
          */
         window.addEventListener(
             "orientationchange",
@@ -608,50 +696,70 @@
                     return;
                 }
 
+
                 /*
                  * Immediately rebuild.
                  */
                 updateGameViewport();
+
                 rebuildExitButton();
 
+
                 /*
-                 * Rebuild again while iOS finishes
-                 * changing the viewport.
+                 * iOS may still be changing
+                 * the viewport at this point.
                  */
                 setTimeout(() => {
-                    if (gameOpen) {
-                        updateGameViewport();
-                        rebuildExitButton();
+                    if (!gameOpen) {
+                        return;
                     }
+
+                    updateGameViewport();
+                    rebuildExitButton();
+
                 }, 50);
 
+
                 setTimeout(() => {
-                    if (gameOpen) {
-                        updateGameViewport();
-                        rebuildExitButton();
+                    if (!gameOpen) {
+                        return;
                     }
+
+                    updateGameViewport();
+                    rebuildExitButton();
+
                 }, 150);
 
-                setTimeout(() => {
-                    if (gameOpen) {
-                        updateGameViewport();
-                        rebuildExitButton();
-                    }
-                }, 300);
 
                 setTimeout(() => {
-                    if (gameOpen) {
-                        updateGameViewport();
-                        rebuildExitButton();
+                    if (!gameOpen) {
+                        return;
                     }
+
+                    updateGameViewport();
+                    rebuildExitButton();
+
+                }, 300);
+
+
+                setTimeout(() => {
+                    if (!gameOpen) {
+                        return;
+                    }
+
+                    updateGameViewport();
+                    rebuildExitButton();
+
                 }, 500);
             }
         );
 
 
         /*
-         * visualViewport is especially useful on iOS because
-         * its viewport can update separately from window.resize.
+         * iOS visualViewport.
+         *
+         * This catches viewport changes that
+         * don't always behave like normal resize.
          */
         if (window.visualViewport) {
             window.visualViewport.addEventListener(
@@ -662,6 +770,7 @@
                     }
 
                     updateGameViewport();
+
                     rebuildExitButton();
                 }
             );
@@ -669,7 +778,7 @@
 
 
         /*
-         * Start.
+         * Start ZenPlay.
          */
         loadGames();
     </script>
