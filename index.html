@@ -95,9 +95,8 @@
         /*
             Game overlay
 
-            Absolute positioning is intentional here.
-            It avoids relying on iOS's fixed-position
-            touch-coordinate handling during rotation.
+            Absolute positioning avoids the iOS fixed-position
+            touch-coordinate problem during rotation.
         */
 
         #gameOverlay {
@@ -120,12 +119,6 @@
             margin: 0;
             padding: 0;
         }
-
-        /*
-            The iframe fills the overlay.
-
-            It does NOT use fixed positioning.
-        */
 
         #gameFrame {
             position: absolute;
@@ -150,9 +143,13 @@
 
         /*
             Exit button
+
+            This element is intentionally recreated after
+            rotation so iOS gets a completely new hit-test
+            target.
         */
 
-        #exitButton {
+        .exit-button {
             position: absolute;
 
             top: calc(
@@ -185,13 +182,9 @@
             -webkit-backdrop-filter: blur(10px);
         }
 
-        #exitButton:hover {
+        .exit-button:hover {
             background: rgba(40, 40, 48, 0.95);
         }
-
-        /*
-            Black page while playing
-        */
 
         body.playing {
             background: #000;
@@ -217,12 +210,11 @@
 </div>
 
 
-<!-- Game overlay -->
-
 <div id="gameOverlay">
 
     <button
         id="exitButton"
+        class="exit-button"
         type="button"
     >
         Exit
@@ -247,21 +239,19 @@ const gameOverlay =
 const gameFrame =
     document.getElementById("gameFrame");
 
-const exitButton =
-    document.getElementById("exitButton");
 
 let savedScrollPosition = 0;
 
 let viewportSyncTimer = null;
 
+let rotationTimer = null;
+
 
 /*
-    Get the current usable document viewport.
+    Get the current document viewport.
 
-    documentElement.clientWidth/clientHeight are
-    deliberately used instead of depending only on
-    visualViewport because iOS can temporarily report
-    stale visualViewport values during rotation.
+    clientWidth/clientHeight are preferred because they
+    represent the layout viewport used by the page.
 */
 
 function getViewportSize() {
@@ -282,11 +272,7 @@ function getViewportSize() {
 
 
 /*
-    Update the overlay and iframe.
-
-    The iframe itself stays 100% of the overlay.
-    This means we only have to get the outer viewport
-    dimensions correct.
+    Update the game viewport.
 */
 
 function updateGameViewport() {
@@ -301,9 +287,10 @@ function updateGameViewport() {
     const viewport =
         getViewportSize();
 
+
     /*
-        Keep the overlay at the exact scroll position
-        where the game was opened.
+        Keep the overlay aligned with the document
+        position where the game was opened.
     */
 
     gameOverlay.style.left = "0px";
@@ -319,10 +306,7 @@ function updateGameViewport() {
 
 
     /*
-        Explicitly resize the iframe too.
-
-        This makes the iframe update even if iOS does
-        not immediately recalculate its percentage size.
+        Explicitly size the iframe.
     */
 
     gameFrame.style.left = "0px";
@@ -338,8 +322,10 @@ function updateGameViewport() {
 
 
 /*
-    Force the browser to perform a layout before
-    measuring the viewport again.
+    Force a layout calculation.
+
+    This makes WebKit resolve the new geometry before
+    we recreate the button.
 */
 
 function forceLayout() {
@@ -353,14 +339,14 @@ function forceLayout() {
 
 
 /*
-    iOS can fire resize/orientation events while the
-    rotation animation is still changing the viewport.
+    Create a completely new Exit button.
 
-    So we wait until the UI has settled and then sync
-    several times.
+    The old button is removed from the DOM first.
+    This is intentional: after iOS rotation, the old
+    element can retain stale touch geometry.
 */
 
-function scheduleViewportSync() {
+function rebuildExitButton() {
 
     if (
         !document.body.classList.contains("playing")
@@ -368,11 +354,135 @@ function scheduleViewportSync() {
         return;
     }
 
-    clearTimeout(viewportSyncTimer);
+
+    const oldButton =
+        document.getElementById("exitButton");
+
+
+    if (oldButton) {
+
+        oldButton.remove();
+
+    }
 
 
     /*
-        First sync after the current rendering cycle.
+        Create a brand-new button.
+    */
+
+    const newButton =
+        document.createElement("button");
+
+
+    newButton.id =
+        "exitButton";
+
+    newButton.className =
+        "exit-button";
+
+    newButton.type =
+        "button";
+
+    newButton.textContent =
+        "Exit";
+
+
+    /*
+        Add it back to the overlay.
+    */
+
+    gameOverlay.appendChild(
+        newButton
+    );
+
+
+    /*
+        Force WebKit to calculate the new button's
+        layout and hit-test region.
+    */
+
+    void newButton.offsetWidth;
+
+
+    /*
+        Direct pointer handler.
+    */
+
+    newButton.addEventListener(
+        "pointerup",
+        event => {
+
+            event.preventDefault();
+
+            closeGame();
+
+        },
+        {
+            passive: false
+        }
+    );
+
+
+    /*
+        Touch fallback for iOS.
+    */
+
+    newButton.addEventListener(
+        "touchend",
+        event => {
+
+            event.preventDefault();
+
+            closeGame();
+
+        },
+        {
+            passive: false
+        }
+    );
+
+
+    /*
+        Normal click fallback.
+    */
+
+    newButton.addEventListener(
+        "click",
+        event => {
+
+            event.preventDefault();
+
+            closeGame();
+
+        }
+    );
+}
+
+
+/*
+    Rebuild everything after rotation has settled.
+
+    The repeated passes are deliberate because iOS can
+    report intermediate viewport dimensions while the
+    orientation transition is still finishing.
+*/
+
+function resyncAfterRotation() {
+
+    if (
+        !document.body.classList.contains("playing")
+    ) {
+        return;
+    }
+
+
+    clearTimeout(
+        rotationTimer
+    );
+
+
+    /*
+        First rendering pass.
     */
 
     requestAnimationFrame(() => {
@@ -383,7 +493,7 @@ function scheduleViewportSync() {
 
 
         /*
-            Second sync on the next frame.
+            Second rendering pass.
         */
 
         requestAnimationFrame(() => {
@@ -394,11 +504,10 @@ function scheduleViewportSync() {
 
 
             /*
-                Wait for iOS's rotation/layout process
-                to settle.
+                Wait for the rotation UI to settle.
             */
 
-            viewportSyncTimer =
+            rotationTimer =
                 setTimeout(() => {
 
                     requestAnimationFrame(() => {
@@ -407,23 +516,29 @@ function scheduleViewportSync() {
 
                         updateGameViewport();
 
-
                         /*
-                            One final delayed sync.
+                            Recreate the button only
+                            after the viewport is stable.
                         */
 
-                        viewportSyncTimer =
-                            setTimeout(() => {
+                        rebuildExitButton();
 
-                                forceLayout();
 
-                                updateGameViewport();
+                        /*
+                            One final viewport pass.
+                        */
 
-                            }, 150);
+                        requestAnimationFrame(() => {
+
+                            forceLayout();
+
+                            updateGameViewport();
+
+                        });
 
                     });
 
-                }, 150);
+                }, 200);
 
         });
 
@@ -432,7 +547,49 @@ function scheduleViewportSync() {
 
 
 /*
-    Load games from games.json
+    Handle normal viewport changes.
+*/
+
+function scheduleViewportSync() {
+
+    if (
+        !document.body.classList.contains("playing")
+    ) {
+        return;
+    }
+
+
+    clearTimeout(
+        viewportSyncTimer
+    );
+
+
+    requestAnimationFrame(() => {
+
+        forceLayout();
+
+        updateGameViewport();
+
+
+        viewportSyncTimer =
+            setTimeout(() => {
+
+                requestAnimationFrame(() => {
+
+                    forceLayout();
+
+                    updateGameViewport();
+
+                });
+
+            }, 100);
+
+    });
+}
+
+
+/*
+    Load games.
 */
 
 async function loadGames() {
@@ -442,6 +599,7 @@ async function loadGames() {
         const response =
             await fetch("games.json");
 
+
         if (!response.ok) {
 
             throw new Error(
@@ -450,10 +608,13 @@ async function loadGames() {
 
         }
 
+
         const data =
             await response.json();
 
-        gamesContainer.innerHTML = "";
+
+        gamesContainer.innerHTML =
+            "";
 
 
         data.games.forEach(game => {
@@ -461,12 +622,16 @@ async function loadGames() {
             const card =
                 document.createElement("div");
 
-            card.className = "game";
+
+            card.className =
+                "game";
 
 
             card.onclick = () => {
 
-                openGame(game.file);
+                openGame(
+                    game.file
+                );
 
             };
 
@@ -484,7 +649,9 @@ async function loadGames() {
             `;
 
 
-            gamesContainer.appendChild(card);
+            gamesContainer.appendChild(
+                card
+            );
 
         });
 
@@ -501,13 +668,13 @@ async function loadGames() {
 
 
 /*
-    Open a game
+    Open a game.
 */
 
 function openGame(file) {
 
     /*
-        Save the exact page position.
+        Save the current page position.
     */
 
     savedScrollPosition =
@@ -523,7 +690,7 @@ function openGame(file) {
 
 
     /*
-        Make the page black.
+        Enter playing mode.
     */
 
     document.body.classList.add(
@@ -532,7 +699,7 @@ function openGame(file) {
 
 
     /*
-        Prevent the document from scrolling.
+        Prevent page scrolling.
     */
 
     document.body.style.overflow =
@@ -556,15 +723,14 @@ function openGame(file) {
 
 
     /*
-        Give the DOM one frame to create the
-        overlay before measuring it.
+        Initial viewport setup.
     */
 
     requestAnimationFrame(() => {
 
         updateGameViewport();
 
-        scheduleViewportSync();
+        rebuildExitButton();
 
     });
 
@@ -572,7 +738,7 @@ function openGame(file) {
 
 
 /*
-    Close the game
+    Close the game.
 */
 
 function closeGame() {
@@ -581,7 +747,8 @@ function closeGame() {
         Stop the game.
     */
 
-    gameFrame.src = "";
+    gameFrame.src =
+        "";
 
 
     /*
@@ -593,7 +760,7 @@ function closeGame() {
 
 
     /*
-        Show the games again.
+        Show the games.
     */
 
     gamesContainer.style.display =
@@ -601,7 +768,7 @@ function closeGame() {
 
 
     /*
-        Restore the normal page.
+        Leave playing mode.
     */
 
     document.body.classList.remove(
@@ -618,15 +785,20 @@ function closeGame() {
 
 
     /*
-        Clear any pending rotation sync.
+        Cancel pending syncs.
     */
 
-    clearTimeout(viewportSyncTimer);
+    clearTimeout(
+        viewportSyncTimer
+    );
+
+    clearTimeout(
+        rotationTimer
+    );
 
 
     /*
-        Restore the exact position where
-        the game was opened.
+        Restore the exact position.
     */
 
     requestAnimationFrame(() => {
@@ -642,54 +814,25 @@ function closeGame() {
 
 
 /*
-    Exit button events.
+    Orientation change.
 
-    pointerup is used first because it gives iOS
-    a direct pointer interaction.
-
-    click remains as a fallback.
-*/
-
-exitButton.addEventListener(
-    "pointerup",
-    event => {
-
-        event.preventDefault();
-
-        closeGame();
-
-    },
-    {
-        passive: false
-    }
-);
-
-
-exitButton.addEventListener(
-    "click",
-    event => {
-
-        event.preventDefault();
-
-        closeGame();
-
-    }
-);
-
-
-/*
-    Rotation / viewport events
+    Wait for the rotation to finish before rebuilding
+    the button.
 */
 
 window.addEventListener(
     "orientationchange",
     () => {
 
-        scheduleViewportSync();
+        resyncAfterRotation();
 
     }
 );
 
+
+/*
+    Window resize.
+*/
 
 window.addEventListener(
     "resize",
@@ -702,8 +845,10 @@ window.addEventListener(
 
 
 /*
-    visualViewport can change separately from the
-    normal window viewport on iOS.
+    visualViewport resize.
+
+    This catches additional iOS viewport changes that
+    may happen separately from window.resize.
 */
 
 if (window.visualViewport) {
@@ -721,7 +866,7 @@ if (window.visualViewport) {
 
 
 /*
-    Initial game loading
+    Load the games.
 */
 
 loadGames();
