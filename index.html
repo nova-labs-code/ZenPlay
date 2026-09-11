@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+
     <meta charset="UTF-8">
 
     <meta
@@ -12,29 +13,79 @@
         viewport-fit=cover"
     >
 
+    <meta
+        name="apple-mobile-web-app-capable"
+        content="yes"
+    >
+
+    <meta
+        name="apple-mobile-web-app-status-bar-style"
+        content="black-translucent"
+    >
+
+    <meta
+        name="apple-mobile-web-app-title"
+        content="ZenPlay"
+    >
+
+    <meta
+        name="theme-color"
+        content="#08090d"
+    >
+
     <title>ZenPlay</title>
 
     <style>
+
         * {
             box-sizing: border-box;
         }
 
-        html,
+
+        /*
+         * ========================================================
+         * DOCUMENT
+         * ========================================================
+         */
+
+        html {
+            margin: 0;
+            padding: 0;
+
+            width: 100%;
+            height: 100%;
+
+            background: #08090d;
+
+            overflow-x: hidden;
+        }
+
         body {
             margin: 0;
+            padding: 40px 20px;
+
             width: 100%;
             min-height: 100%;
+
             font-family: Arial, sans-serif;
+
             background: #08090d;
             color: white;
+
+            overflow-x: hidden;
         }
 
-        body {
-            padding: 40px 20px;
-        }
+
+        /*
+         * ========================================================
+         * HOME
+         * ========================================================
+         */
 
         .container {
+            width: 100%;
             max-width: 900px;
+
             margin: auto;
         }
 
@@ -51,20 +102,29 @@
 
         .games {
             display: grid;
-            grid-template-columns: repeat(
-                auto-fit,
-                minmax(240px, 1fr)
-            );
+
+            grid-template-columns:
+                repeat(
+                    auto-fit,
+                    minmax(240px, 1fr)
+                );
+
             gap: 20px;
         }
 
         .game {
             padding: 25px;
+
             border-radius: 18px;
+
             background: #11131a;
+
             border: 1px solid #242733;
+
             color: white;
+
             cursor: pointer;
+
             transition:
                 transform 0.2s,
                 border-color 0.2s;
@@ -81,7 +141,9 @@
 
         .game p {
             margin: 0 0 15px;
+
             color: #9da3b4;
+
             line-height: 1.5;
         }
 
@@ -90,44 +152,93 @@
             color: #6f7688;
         }
 
+
         /*
-         * Game viewport
+         * ========================================================
+         * PLAYING STATE
+         * ========================================================
          *
-         * Absolute positioning is intentional.
-         * Fixed positioning can cause stale touch/layout
-         * coordinates on iOS after rotation.
+         * When a game is open, the document itself is frozen.
+         *
+         * The game is NOT positioned using scrollY.
+         * It is anchored directly to the document's top-left.
          */
+
+        body.playing {
+            padding: 0;
+            margin: 0;
+
+            width: 100%;
+            height: 100%;
+
+            overflow: hidden;
+
+            background: #000;
+        }
+
+        body.playing .container {
+            display: none;
+        }
+
+
+        /*
+         * ========================================================
+         * GAME OVERLAY
+         * ========================================================
+         *
+         * Absolute, not fixed.
+         *
+         * It occupies the layout viewport.
+         */
+
         #gameOverlay {
+
             position: absolute;
 
             left: 0;
             top: 0;
 
-            width: 0;
-            height: 0;
+            width: 100%;
+            height: 100vh;
+
+            margin: 0;
+            padding: 0;
 
             background: #000;
 
             display: none;
 
+            overflow: hidden;
+
             z-index: 1000;
 
-            overflow: hidden;
+            /*
+             * Prevent the game container itself from scrolling.
+             */
+            touch-action: none;
         }
 
+
         /*
-         * The iframe is its own game layer.
+         * ========================================================
+         * GAME IFRAME
+         * ========================================================
          */
+
         #gameFrame {
+
             position: absolute;
 
             left: 0;
             top: 0;
 
-            width: 0;
-            height: 0;
+            width: 100%;
+            height: 100%;
 
-            border: none;
+            margin: 0;
+            padding: 0;
+
+            border: 0;
 
             display: block;
 
@@ -136,52 +247,80 @@
             z-index: 1;
 
             /*
-             * Prevent the iframe from affecting touch behavior
-             * outside the exact game viewport.
+             * The iframe is clipped by #gameOverlay.
              */
             max-width: 100%;
             max-height: 100%;
         }
 
+
         /*
-         * Controls are a separate layer above the game.
+         * ========================================================
+         * GAME CONTROLS
+         * ========================================================
+         *
+         * Separate from the iframe.
          */
+
         #gameControls {
+
             position: absolute;
 
             left: 0;
             top: 0;
 
-            width: 0;
-            height: 0;
+            width: 100%;
+            height: 100vh;
+
+            margin: 0;
+            padding: 0;
+
+            display: none;
+
+            overflow: hidden;
 
             z-index: 2000;
 
             pointer-events: none;
         }
 
+
         /*
-         * Exit button
+         * ========================================================
+         * EXIT BUTTON
+         * ========================================================
          */
+
         #exitButton {
+
             position: absolute;
 
-            top: calc(
-                16px + env(safe-area-inset-top)
-            );
+            top:
+                calc(
+                    16px +
+                    env(safe-area-inset-top)
+                );
 
-            right: calc(
-                16px + env(safe-area-inset-right)
-            );
-
-            z-index: 2001;
+            right:
+                calc(
+                    16px +
+                    env(safe-area-inset-right)
+                );
 
             padding: 10px 16px;
 
             border: none;
+
             border-radius: 10px;
 
-            background: rgba(20, 20, 25, 0.85);
+            background:
+                rgba(
+                    20,
+                    20,
+                    25,
+                    0.85
+                );
+
             color: white;
 
             font-size: 15px;
@@ -192,642 +331,831 @@
 
             touch-action: manipulation;
 
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
+            z-index: 2001;
+
+            -webkit-backdrop-filter:
+                blur(10px);
+
+            backdrop-filter:
+                blur(10px);
         }
 
         #exitButton:hover {
-            background: rgba(40, 40, 48, 0.95);
+            background:
+                rgba(
+                    40,
+                    40,
+                    48,
+                    0.95
+                );
         }
 
+
         /*
-         * Black page while playing
+         * ========================================================
+         * STANDALONE HOME SCREEN WEB APP
+         * ========================================================
          */
-        body.playing {
-            background: #000;
-            padding: 0;
+
+        @media all and (display-mode: standalone) {
+
+            html {
+                width: 100%;
+                height: 100%;
+
+                overflow: hidden;
+            }
+
+            body {
+                width: 100%;
+                min-height: 100%;
+
+                overflow-x: hidden;
+            }
+
+            #gameOverlay,
+            #gameControls {
+
+                height: 100vh;
+            }
         }
+
     </style>
 </head>
 
 <body>
 
-<div class="container">
 
-    <h1>ZenPlay</h1>
+    <!-- ========================================================
+         HOME SCREEN
+         ========================================================= -->
 
-    <p class="subtitle">
-        Simple, satisfying games.
-    </p>
+    <div class="container">
 
-    <div class="games" id="games">
-        Loading games...
+        <h1>
+            ZenPlay
+        </h1>
+
+        <p class="subtitle">
+            Simple, satisfying games.
+        </p>
+
+        <div
+            class="games"
+            id="games"
+        >
+            Loading games...
+        </div>
+
     </div>
 
-</div>
 
-<!-- Game layer -->
+    <!-- ========================================================
+         GAME
+         ========================================================= -->
 
-<div id="gameOverlay">
+    <div id="gameOverlay">
 
-    <iframe
-        id="gameFrame"
-        allow="fullscreen">
-    </iframe>
+        <iframe
+            id="gameFrame"
+            allow="fullscreen"
+            scrolling="no">
+        </iframe>
 
-</div>
-
-<!-- UI layer -->
-
-<div id="gameControls">
-
-    <button id="exitButton">
-        Exit
-    </button>
-
-</div>
-
-<script>
-
-const gamesContainer =
-    document.getElementById("games");
-
-const gameOverlay =
-    document.getElementById("gameOverlay");
-
-const gameFrame =
-    document.getElementById("gameFrame");
-
-const gameControls =
-    document.getElementById("gameControls");
-
-let savedScrollPosition = 0;
-
-let viewportSyncTimer = null;
+    </div>
 
 
-/*
- * Load games
- */
+    <!-- ========================================================
+         GAME UI
+         ========================================================= -->
 
-async function loadGames() {
+    <div id="gameControls">
 
-    try {
+        <button
+            id="exitButton"
+            type="button"
+            aria-label="Exit game">
 
-        const response =
-            await fetch("games.json");
+            Exit
 
-        if (!response.ok) {
-            throw new Error(
-                "Could not load games.json"
+        </button>
+
+    </div>
+
+
+    <script>
+
+        /*
+         * ========================================================
+         * ELEMENTS
+         * ========================================================
+         */
+
+        const gamesContainer =
+            document.getElementById(
+                "games"
             );
+
+        const gameOverlay =
+            document.getElementById(
+                "gameOverlay"
+            );
+
+        const gameControls =
+            document.getElementById(
+                "gameControls"
+            );
+
+        const gameFrame =
+            document.getElementById(
+                "gameFrame"
+            );
+
+        const exitButton =
+            document.getElementById(
+                "exitButton"
+            );
+
+
+        /*
+         * ========================================================
+         * STATE
+         * ========================================================
+         */
+
+        let gameOpen = false;
+
+        let resizeTimer = null;
+
+        let rotationTimer = null;
+
+
+        /*
+         * ========================================================
+         * LOAD GAMES
+         * ========================================================
+         */
+
+        async function loadGames() {
+
+            try {
+
+                const response =
+                    await fetch(
+                        "games.json"
+                    );
+
+                if (!response.ok) {
+
+                    throw new Error(
+                        "Could not load games.json"
+                    );
+
+                }
+
+                const data =
+                    await response.json();
+
+
+                gamesContainer.innerHTML =
+                    "";
+
+
+                data.games.forEach(
+                    game => {
+
+                        const card =
+                            document.createElement(
+                                "div"
+                            );
+
+
+                        card.className =
+                            "game";
+
+
+                        card.onclick =
+                            () => {
+
+                                openGame(
+                                    game.file
+                                );
+
+                            };
+
+
+                        card.innerHTML = `
+                            <h2>
+                                ${game.name}
+                            </h2>
+
+                            <p>
+                                ${game.description}
+                            </p>
+
+                            <div class="game-info">
+                                ${game.category}
+                                ·
+                                ${game.type}
+                            </div>
+                        `;
+
+
+                        gamesContainer.appendChild(
+                            card
+                        );
+
+                    }
+                );
+
+
+            } catch (error) {
+
+                gamesContainer.innerHTML =
+                    "Unable to load games.";
+
+                console.error(error);
+
+            }
+
         }
 
-        const data =
-            await response.json();
 
-        gamesContainer.innerHTML = "";
+        /*
+         * ========================================================
+         * GET ACTUAL LAYOUT VIEWPORT
+         * ========================================================
+         *
+         * Deliberately NOT using visualViewport.
+         *
+         * This matches the CSS viewport used by the absolute
+         * 100vh game container.
+         */
 
-        data.games.forEach(game => {
+        function getViewportSize() {
 
-            const card =
-                document.createElement("div");
+            const root =
+                document.documentElement;
 
-            card.className = "game";
 
-            card.onclick = () => {
-                openGame(game.file);
+            return {
+
+                width:
+                    Math.max(
+                        1,
+                        root.clientWidth ||
+                        window.innerWidth
+                    ),
+
+                height:
+                    Math.max(
+                        1,
+                        root.clientHeight ||
+                        window.innerHeight
+                    )
+
             };
 
-            card.innerHTML = `
-                <h2>${game.name}</h2>
+        }
 
-                <p>
-                    ${game.description}
-                </p>
 
-                <div class="game-info">
-                    ${game.category} · ${game.type}
-                </div>
-            `;
+        /*
+         * ========================================================
+         * UPDATE GAME
+         * ========================================================
+         *
+         * The overlay, iframe, and controls all receive
+         * exactly the same dimensions.
+         *
+         * None of them use scrollY.
+         */
 
-            gamesContainer.appendChild(card);
+        function updateGameViewport() {
 
-        });
+            if (!gameOpen) {
+                return;
+            }
 
-    } catch (error) {
 
-        gamesContainer.innerHTML =
-            "Unable to load games.";
+            const viewport =
+                getViewportSize();
 
-        console.error(error);
 
-    }
-}
+            const width =
+                Math.round(
+                    viewport.width
+                );
 
+            const height =
+                Math.round(
+                    viewport.height
+                );
 
-/*
- * Get the actual usable viewport.
- *
- * visualViewport is important on iOS because
- * innerHeight can temporarily contain stale
- * dimensions during rotation.
- */
 
-function getViewportSize() {
+            /*
+             * Game container.
+             */
 
-    const visualViewport =
-        window.visualViewport;
+            gameOverlay.style.left =
+                "0px";
 
-    if (
-        visualViewport &&
-        visualViewport.width > 0 &&
-        visualViewport.height > 0
-    ) {
+            gameOverlay.style.top =
+                "0px";
 
-        return {
-            width: Math.round(
-                visualViewport.width
-            ),
+            gameOverlay.style.width =
+                width + "px";
 
-            height: Math.round(
-                visualViewport.height
-            )
-        };
+            gameOverlay.style.height =
+                height + "px";
 
-    }
 
-    const root =
-        document.documentElement;
+            /*
+             * Game iframe.
+             */
 
-    return {
-        width: Math.round(
-            root.clientWidth ||
-            window.innerWidth
-        ),
+            gameFrame.style.left =
+                "0px";
 
-        height: Math.round(
-            root.clientHeight ||
-            window.innerHeight
-        )
-    };
-}
+            gameFrame.style.top =
+                "0px";
 
+            gameFrame.style.width =
+                width + "px";
 
-/*
- * Force the browser to finish any pending
- * layout calculation before measuring.
- */
+            gameFrame.style.height =
+                height + "px";
 
-function forceLayout() {
 
-    void document.documentElement.offsetHeight;
-    void gameOverlay.offsetHeight;
-    void gameControls.offsetHeight;
-    void gameFrame.offsetHeight;
-}
+            /*
+             * Controls.
+             */
 
+            gameControls.style.left =
+                "0px";
 
-/*
- * Update every game viewport dimension.
- *
- * Nothing is allowed to use 100vh here.
- */
+            gameControls.style.top =
+                "0px";
 
-function updateGameViewport() {
+            gameControls.style.width =
+                width + "px";
 
-    if (
-        gameOverlay.style.display === "none"
-    ) {
-        return;
-    }
+            gameControls.style.height =
+                height + "px";
 
-    const viewport =
-        getViewportSize();
 
-    const width =
-        Math.max(1, viewport.width);
+            /*
+             * Force WebKit to recalculate layout.
+             */
 
-    const height =
-        Math.max(1, viewport.height);
+            void gameOverlay.offsetWidth;
 
-    /*
-     * Both layers use exactly the same
-     * physical viewport rectangle.
-     */
+            void gameFrame.offsetWidth;
 
-    gameOverlay.style.left = "0px";
+            void gameControls.offsetWidth;
 
-    gameOverlay.style.top =
-        savedScrollPosition + "px";
+        }
 
-    gameOverlay.style.width =
-        width + "px";
 
-    gameOverlay.style.height =
-        height + "px";
+        /*
+         * ========================================================
+         * FORCE LAYOUT
+         * ========================================================
+         */
 
+        function forceLayout() {
 
-    gameControls.style.left = "0px";
+            void document.documentElement.offsetHeight;
 
-    gameControls.style.top =
-        savedScrollPosition + "px";
+            void gameOverlay.offsetHeight;
 
-    gameControls.style.width =
-        width + "px";
+            void gameFrame.offsetHeight;
 
-    gameControls.style.height =
-        height + "px";
+            void gameControls.offsetHeight;
 
+            void exitButton.offsetHeight;
 
-    /*
-     * Explicit iframe dimensions.
-     *
-     * This prevents the old landscape size
-     * from remaining underneath the new
-     * portrait viewport.
-     */
+        }
 
-    gameFrame.style.left = "0px";
 
-    gameFrame.style.top = "0px";
+        /*
+         * ========================================================
+         * ROTATION
+         * ========================================================
+         *
+         * Do not trust the first orientationchange measurement.
+         *
+         * iOS can still be changing its layout viewport.
+         */
 
-    gameFrame.style.width =
-        width + "px";
+        function resyncAfterRotation() {
 
-    gameFrame.style.height =
-        height + "px";
-}
+            if (!gameOpen) {
+                return;
+            }
 
 
-/*
- * Rebuild the Exit button.
- *
- * This forces iOS/WebKit to create a fresh
- * hit-test target after rotation.
- */
+            clearTimeout(
+                rotationTimer
+            );
 
-function rebuildExitButton() {
 
-    const oldButton =
-        document.getElementById(
-            "exitButton"
-        );
-
-    if (oldButton) {
-        oldButton.remove();
-    }
-
-    const button =
-        document.createElement("button");
-
-    button.id = "exitButton";
-
-    button.textContent = "Exit";
-
-    button.type = "button";
-
-    button.setAttribute(
-        "aria-label",
-        "Exit game"
-    );
-
-    gameControls.appendChild(button);
-
-    /*
-     * Force layout so WebKit recalculates
-     * the button's physical hit rectangle.
-     */
-
-    void button.offsetWidth;
-    void button.offsetHeight;
-
-    button.addEventListener(
-        "pointerup",
-        event => {
-
-            event.preventDefault();
-
-            closeGame();
-
-        },
-        { passive: false }
-    );
-
-    button.addEventListener(
-        "touchend",
-        event => {
-
-            event.preventDefault();
-
-        },
-        { passive: false }
-    );
-
-    button.addEventListener(
-        "click",
-        event => {
-
-            event.preventDefault();
-
-            closeGame();
-
-        },
-        { passive: false }
-    );
-}
-
-
-/*
- * Full rotation resynchronization.
- *
- * iOS can fire the rotation event before
- * its viewport geometry is actually settled.
- *
- * So we intentionally wait for several
- * browser frames and then perform a final
- * delayed measurement.
- */
-
-function resyncAfterRotation() {
-
-    if (
-        gameOverlay.style.display === "none"
-    ) {
-        return;
-    }
-
-    /*
-     * Temporarily remove the iframe from
-     * visibility while its dimensions and
-     * compositing layer are rebuilt.
-     */
-
-    gameFrame.style.visibility =
-        "hidden";
-
-
-    requestAnimationFrame(() => {
-
-        forceLayout();
-
-        updateGameViewport();
-
-
-        requestAnimationFrame(() => {
-
-            forceLayout();
-
-            updateGameViewport();
-
-            rebuildExitButton();
-
-
-            requestAnimationFrame(() => {
-
-                forceLayout();
-
-                updateGameViewport();
-
-
-                /*
-                 * iOS may perform one more
-                 * viewport adjustment after
-                 * the rotation animation.
-                 */
-
-                setTimeout(() => {
-
-                    requestAnimationFrame(() => {
-
-                        forceLayout();
-
-                        updateGameViewport();
-
-                        rebuildExitButton();
-
-                        /*
-                         * Now that the final
-                         * geometry is known,
-                         * restore the game.
-                         */
-
-                        gameFrame.style.visibility =
-                            "visible";
-
-                    });
-
-                }, 200);
-
-            });
-
-        });
-
-    });
-}
-
-
-/*
- * Normal viewport synchronization.
- */
-
-function scheduleViewportSync() {
-
-    if (
-        gameOverlay.style.display === "none"
-    ) {
-        return;
-    }
-
-    clearTimeout(
-        viewportSyncTimer
-    );
-
-    /*
-     * Immediate correction.
-     */
-
-    updateGameViewport();
-
-
-    /*
-     * Wait for iOS layout to settle.
-     */
-
-    viewportSyncTimer =
-        setTimeout(() => {
-
-            requestAnimationFrame(() => {
-
-                forceLayout();
-
-                updateGameViewport();
-
-            });
-
-        }, 100);
-}
-
-
-/*
- * Open game
- */
-
-function openGame(file) {
-
-    savedScrollPosition =
-        window.scrollY;
-
-    gamesContainer.style.display =
-        "none";
-
-    document.body.classList.add(
-        "playing"
-    );
-
-    document.body.style.overflow =
-        "hidden";
-
-    gameOverlay.style.display =
-        "block";
-
-    gameControls.style.display =
-        "block";
-
-    gameFrame.style.visibility =
-        "hidden";
-
-    gameFrame.src = file;
-
-
-    /*
-     * Establish the first viewport.
-     */
-
-    requestAnimationFrame(() => {
-
-        forceLayout();
-
-        updateGameViewport();
-
-        rebuildExitButton();
-
-
-        requestAnimationFrame(() => {
-
-            forceLayout();
-
-            updateGameViewport();
+            /*
+             * Temporarily hide the iframe.
+             *
+             * This prevents its old landscape compositing
+             * rectangle from appearing during the transition.
+             */
 
             gameFrame.style.visibility =
-                "visible";
-
-        });
-
-    });
-
-}
+                "hidden";
 
 
-/*
- * Close game
- */
+            /*
+             * Frame 1.
+             */
 
-function closeGame() {
+            requestAnimationFrame(
+                () => {
 
-    gameFrame.style.visibility =
-        "hidden";
+                    forceLayout();
 
-    gameFrame.src = "";
+                    updateGameViewport();
 
-    gameOverlay.style.display =
-        "none";
 
-    gameControls.style.display =
-        "none";
+                    /*
+                     * Frame 2.
+                     */
 
-    gamesContainer.style.display =
-        "";
+                    requestAnimationFrame(
+                        () => {
 
-    document.body.classList.remove(
-        "playing"
-    );
+                            forceLayout();
 
-    document.body.style.overflow =
-        "";
+                            updateGameViewport();
 
-    clearTimeout(
-        viewportSyncTimer
-    );
 
-    requestAnimationFrame(() => {
+                            /*
+                             * Frame 3.
+                             */
 
-        window.scrollTo(
-            0,
-            savedScrollPosition
+                            requestAnimationFrame(
+                                () => {
+
+                                    forceLayout();
+
+                                    updateGameViewport();
+
+
+                                    /*
+                                     * Let the iOS rotation
+                                     * animation finish.
+                                     */
+
+                                    rotationTimer =
+                                        setTimeout(
+                                            () => {
+
+                                                requestAnimationFrame(
+                                                    () => {
+
+                                                        forceLayout();
+
+                                                        updateGameViewport();
+
+
+                                                        /*
+                                                         * Final
+                                                         * geometry.
+                                                         */
+
+                                                        gameFrame.style.visibility =
+                                                            "visible";
+
+                                                    }
+                                                );
+
+                                            },
+                                            250
+                                        );
+
+                                }
+                            );
+
+                        }
+                    );
+
+                }
+            );
+
+        }
+
+
+        /*
+         * ========================================================
+         * NORMAL RESIZE
+         * ========================================================
+         */
+
+        function scheduleResize() {
+
+            if (!gameOpen) {
+                return;
+            }
+
+
+            clearTimeout(
+                resizeTimer
+            );
+
+
+            updateGameViewport();
+
+
+            resizeTimer =
+                setTimeout(
+                    () => {
+
+                        requestAnimationFrame(
+                            () => {
+
+                                forceLayout();
+
+                                updateGameViewport();
+
+                            }
+                        );
+
+                    },
+                    100
+                );
+
+        }
+
+
+        /*
+         * ========================================================
+         * OPEN GAME
+         * ========================================================
+         */
+
+        function openGame(file) {
+
+            if (gameOpen) {
+                return;
+            }
+
+
+            gameOpen = true;
+
+
+            /*
+             * Completely freeze the Home Screen.
+             */
+
+            document.documentElement.style.overflow =
+                "hidden";
+
+            document.body.style.overflow =
+                "hidden";
+
+
+            document.body.classList.add(
+                "playing"
+            );
+
+
+            /*
+             * Show game layers.
+             */
+
+            gameOverlay.style.display =
+                "block";
+
+            gameControls.style.display =
+                "block";
+
+
+            /*
+             * Hide iframe while its first viewport
+             * is established.
+             */
+
+            gameFrame.style.visibility =
+                "hidden";
+
+
+            /*
+             * Reset stale dimensions.
+             */
+
+            gameFrame.style.width =
+                "0px";
+
+            gameFrame.style.height =
+                "0px";
+
+
+            /*
+             * Load game.
+             */
+
+            gameFrame.src =
+                file;
+
+
+            /*
+             * Establish viewport.
+             */
+
+            requestAnimationFrame(
+                () => {
+
+                    forceLayout();
+
+                    updateGameViewport();
+
+
+                    requestAnimationFrame(
+                        () => {
+
+                            forceLayout();
+
+                            updateGameViewport();
+
+                            gameFrame.style.visibility =
+                                "visible";
+
+                        }
+                    );
+
+                }
+            );
+
+        }
+
+
+        /*
+         * ========================================================
+         * CLOSE GAME
+         * ========================================================
+         */
+
+        function closeGame() {
+
+            if (!gameOpen) {
+                return;
+            }
+
+
+            gameOpen = false;
+
+
+            clearTimeout(
+                resizeTimer
+            );
+
+            clearTimeout(
+                rotationTimer
+            );
+
+
+            /*
+             * Stop the game.
+             */
+
+            gameFrame.src =
+                "about:blank";
+
+
+            gameFrame.style.visibility =
+                "hidden";
+
+
+            /*
+             * Hide game layers.
+
+             */
+
+            gameOverlay.style.display =
+                "none";
+
+            gameControls.style.display =
+                "none";
+
+
+            /*
+             * Restore Home Screen.
+
+             */
+
+            document.body.classList.remove(
+                "playing"
+            );
+
+
+            document.body.style.overflow =
+                "";
+
+            document.documentElement.style.overflow =
+                "";
+
+
+            /*
+             * Reset iframe dimensions.
+             */
+
+            gameFrame.style.width =
+                "";
+
+            gameFrame.style.height =
+                "";
+
+            gameFrame.style.visibility =
+                "";
+
+        }
+
+
+        /*
+         * ========================================================
+         * EXIT BUTTON
+         * ========================================================
+         */
+
+        exitButton.addEventListener(
+            "click",
+            event => {
+
+                event.preventDefault();
+
+                closeGame();
+
+            }
         );
 
-    });
 
-}
+        exitButton.addEventListener(
+            "pointerup",
+            event => {
 
+                event.preventDefault();
 
-/*
- * Rotation
- */
+                closeGame();
 
-window.addEventListener(
-    "orientationchange",
-    () => {
-
-        resyncAfterRotation();
-
-    },
-    { passive: true }
-);
+            },
+            {
+                passive: false
+            }
+        );
 
 
-/*
- * Standard resize
- */
+        /*
+         * ========================================================
+         * ROTATION EVENTS
+         * ========================================================
+         */
 
-window.addEventListener(
-    "resize",
-    () => {
+        window.addEventListener(
+            "orientationchange",
+            () => {
 
-        scheduleViewportSync();
+                resyncAfterRotation();
 
-    },
-    { passive: true }
-);
-
-
-/*
- * iOS visual viewport changes.
- */
-
-if (window.visualViewport) {
-
-    window.visualViewport.addEventListener(
-        "resize",
-        () => {
-
-            scheduleViewportSync();
-
-        },
-        { passive: true }
-    );
-
-}
+            },
+            {
+                passive: true
+            }
+        );
 
 
-/*
- * Initial game list.
- */
+        /*
+         * ========================================================
+         * RESIZE EVENTS
+         * ========================================================
+         */
 
-loadGames();
+        window.addEventListener(
+            "resize",
+            () => {
 
-</script>
+                scheduleResize();
+
+            },
+            {
+                passive: true
+            }
+        );
+
+
+        /*
+         * ========================================================
+         * LOAD
+         * ========================================================
+         */
+
+        loadGames();
+
+    </script>
 
 </body>
 </html>
