@@ -11,7 +11,7 @@
             }
         } catch (error) {
             // Cross-origin iframe.
-            // We cannot inspect the parent page.
+            // Parent cannot be inspected.
         }
     }
 
@@ -33,23 +33,64 @@
     }
 
     // -----------------------------
-    // CHECK CURRENT SITE
+    // CHECK SITE + PAGE
     // -----------------------------
 
     const currentHost = window.location.hostname.toLowerCase();
+    const currentPath =
+        window.location.pathname.toLowerCase().replace(/\/+$/, "") || "/";
 
-    if (
-        hiddenSites.some(site => {
-            site = site.toLowerCase().trim();
+    const shouldHide = hiddenSites.some(entry => {
+        entry = entry
+            .toLowerCase()
+            .trim()
+            .replace(/^https?:\/\//, "")
+            .replace(/^www\./, "")
+            .replace(/\/+$/, "");
 
+        if (!entry) return false;
+
+        const slashIndex = entry.indexOf("/");
+
+        // -----------------------------
+        // DOMAIN ONLY
+        // -----------------------------
+
+        if (slashIndex === -1) {
             return (
-                currentHost === site ||
-                currentHost.endsWith("." + site)
+                currentHost === entry ||
+                currentHost.endsWith("." + entry)
             );
-        })
-    ) {
+        }
+
+        // -----------------------------
+        // DOMAIN + SPECIFIC PAGE
+        // -----------------------------
+
+        const entryHost = entry.substring(0, slashIndex);
+        const entryPath =
+            "/" + entry.substring(slashIndex + 1);
+
+        const hostMatches =
+            currentHost === entryHost ||
+            currentHost.endsWith("." + entryHost);
+
+        if (!hostMatches) return false;
+
+        // Exact page or anything underneath it
+        return (
+            currentPath === entryPath ||
+            currentPath.startsWith(entryPath + "/")
+        );
+    });
+
+    if (shouldHide) {
         return;
     }
+
+    // -----------------------------
+    // ADD WATERMARK
+    // -----------------------------
 
     function addWatermark() {
         if (document.getElementById("nlc-watermark")) return;
@@ -59,6 +100,10 @@
 
         watermark.id = "nlc-watermark";
         text.textContent = "Made by NLC";
+
+        // -----------------------------
+        // WATERMARK BLOCK
+        // -----------------------------
 
         Object.assign(watermark.style, {
             position: "fixed",
@@ -83,6 +128,10 @@
             userSelect: "none"
         });
 
+        // -----------------------------
+        // TEXT
+        // -----------------------------
+
         Object.assign(text.style, {
             color: "#fff",
 
@@ -98,6 +147,10 @@
 
         watermark.appendChild(text);
         document.body.appendChild(watermark);
+
+        // -----------------------------
+        // DETECT BACKGROUND
+        // -----------------------------
 
         function updateTextColor() {
             const rect = watermark.getBoundingClientRect();
@@ -147,9 +200,12 @@
                     const g = color[1];
                     const b = color[2];
 
-                    brightness.push(
-                        (r * 299 + g * 587 + b * 114) / 1000
-                    );
+                    const value =
+                        (r * 299 +
+                         g * 587 +
+                         b * 114) / 1000;
+
+                    brightness.push(value);
                 }
             }
 
