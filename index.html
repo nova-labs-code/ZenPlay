@@ -113,6 +113,7 @@
 
         #gameFrame {
             position: absolute;
+
             inset: 0;
 
             width: 100%;
@@ -135,14 +136,12 @@
         #exitButton {
             position: fixed;
 
-            top: max(
-                16px,
-                env(safe-area-inset-top)
+            top: calc(
+                16px + env(safe-area-inset-top)
             );
 
-            right: max(
-                16px,
-                env(safe-area-inset-right)
+            right: calc(
+                16px + env(safe-area-inset-right)
             );
 
             z-index: 1003;
@@ -163,8 +162,23 @@
 
             touch-action: manipulation;
 
+            pointer-events: auto;
+
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
+
+            /*
+                Keep the button on its own
+                compositing layer.
+
+                This helps iOS WebKit recalculate
+                its touch region after rotation.
+            */
+
+            transform: translateZ(0);
+            -webkit-transform: translateZ(0);
+
+            will-change: top, right, transform;
         }
 
         #exitButton:hover {
@@ -172,7 +186,8 @@
         }
 
         #exitButton:active {
-            transform: scale(0.96);
+            transform: translateZ(0) scale(0.96);
+            -webkit-transform: translateZ(0) scale(0.96);
         }
 
 
@@ -238,59 +253,14 @@ const exitButton =
     document.getElementById("exitButton");
 
 
+let savedScrollPosition = 0;
 let gameOpen = false;
 let currentGameFile = null;
-let savedScrollPosition = 0;
 
 
 /* =========================
-   NAVIGATION STATE
+   HISTORY
 ========================= */
-
-/*
-    ZenPlay uses one history entry for the
-    game screen.
-
-    The important part is that the Exit
-    button NEVER calls history.back().
-
-    This avoids relying on iOS WebKit's
-    navigation stack after orientation
-    changes.
-*/
-
-function setHomeState() {
-
-    history.replaceState(
-        {
-            zenplay: "home"
-        },
-        "",
-        location.pathname +
-        location.search
-    );
-}
-
-
-function setGameState(file) {
-
-    history.pushState(
-        {
-            zenplay: "game",
-            gameFile: file
-        },
-        "",
-        location.pathname +
-        location.search +
-        "#game"
-    );
-}
-
-
-/*
-    Establish a known home state when
-    ZenPlay first loads.
-*/
 
 if (
     !history.state ||
@@ -395,12 +365,16 @@ function openGame(file) {
         String(savedScrollPosition)
     );
 
-    /*
-        Create exactly one game history
-        entry.
-    */
-
-    setGameState(file);
+    history.pushState(
+        {
+            zenplay: "game",
+            gameFile: file
+        },
+        "",
+        location.pathname +
+        location.search +
+        "#game"
+    );
 
     showGame(file);
 }
@@ -428,6 +402,11 @@ function showGame(file) {
     gameOverlay.style.display =
         "block";
 
+    /*
+        Force the overlay and button to
+        be recalculated immediately.
+    */
+
     updateGameViewport();
 
     const gameURL =
@@ -440,22 +419,16 @@ function showGame(file) {
         gameFrame.src = file;
     }
 
-    /*
-        Make sure the Exit button is
-        brought above the iframe after
-        an iOS layout/orientation update.
-    */
+    exitButton.style.pointerEvents =
+        "auto";
 
     exitButton.style.display =
         "block";
-
-    exitButton.style.pointerEvents =
-        "auto";
 }
 
 
 /* =========================
-   EXIT BUTTON
+   CLOSE GAME
 ========================= */
 
 function closeGame() {
@@ -465,23 +438,27 @@ function closeGame() {
     }
 
     /*
-        Do not use history.back().
+        Close directly.
 
-        Directly close the game first.
+        No history.back().
     */
 
     finishCloseGame();
 
     /*
-        Replace the current game state
-        instead of navigating through the
-        history stack.
-
-        This is the important iOS Web App
-        workaround.
+        Remove the #game state without
+        asking iOS to navigate through
+        its history stack.
     */
 
-    setHomeState();
+    history.replaceState(
+        {
+            zenplay: "home"
+        },
+        "",
+        location.pathname +
+        location.search
+    );
 }
 
 
@@ -498,22 +475,17 @@ function finishCloseGame() {
     gameOpen = false;
     currentGameFile = null;
 
-    /*
-        Disable the button before changing
-        the overlay state.
-    */
-
     exitButton.style.pointerEvents =
         "none";
 
     /*
-        Stop the game completely.
+        Stop iframe.
     */
 
     gameFrame.src = "";
 
     /*
-        Hide game UI.
+        Hide game.
     */
 
     gameOverlay.style.display =
@@ -522,20 +494,12 @@ function finishCloseGame() {
     gamesContainer.style.display =
         "";
 
-    /*
-        Restore normal document.
-    */
-
     document.body.classList.remove(
         "playing"
     );
 
     document.body.style.overflow =
         "";
-
-    /*
-        Remove temporary state.
-    */
 
     sessionStorage.removeItem(
         "zenplay-current-game"
@@ -546,8 +510,8 @@ function finishCloseGame() {
     );
 
     /*
-        Restore the exact scroll position
-        after iOS finishes its layout pass.
+        Let iOS finish the layout before
+        restoring the scroll position.
     */
 
     requestAnimationFrame(() => {
@@ -562,25 +526,12 @@ function finishCloseGame() {
         });
 
     });
-
 }
 
 
 /* =========================
-   BROWSER / IOS BACK
+   IOS / BROWSER BACK
 ========================= */
-
-/*
-    If the user presses the browser's
-    Back gesture/button while the game
-    is open, the history entry changes
-    from "game" to "home".
-
-    We close the game.
-
-    We do NOT call history.back()
-    ourselves.
-*/
 
 window.addEventListener(
     "popstate",
@@ -590,12 +541,9 @@ window.addEventListener(
             return;
         }
 
-        const state =
-            event.state;
-
         if (
-            !state ||
-            state.zenplay !== "game"
+            !event.state ||
+            event.state.zenplay !== "game"
         ) {
 
             finishCloseGame();
@@ -609,15 +557,6 @@ window.addEventListener(
 /* =========================
    HASH CHANGE
 ========================= */
-
-/*
-    iOS can sometimes report the URL/hash
-    transition separately during Web App
-    restoration.
-
-    Treat leaving #game as leaving the
-    game screen.
-*/
 
 window.addEventListener(
     "hashchange",
@@ -659,14 +598,16 @@ function restoreGameIfNeeded() {
             "zenplay-scroll-position"
         );
 
-    /*
-        #game without a saved game means
-        the navigation state is invalid.
-    */
-
     if (!savedGame) {
 
-        setHomeState();
+        history.replaceState(
+            {
+                zenplay: "home"
+            },
+            "",
+            location.pathname +
+            location.search
+        );
 
         return;
     }
@@ -679,12 +620,6 @@ function restoreGameIfNeeded() {
     currentGameFile =
         savedGame;
 
-    /*
-        Give iOS time to finish restoring
-        the Web App before loading the
-        iframe.
-    */
-
     requestAnimationFrame(() => {
 
         requestAnimationFrame(() => {
@@ -694,7 +629,6 @@ function restoreGameIfNeeded() {
         });
 
     });
-
 }
 
 
@@ -715,7 +649,7 @@ window.addEventListener(
 
 
 /* =========================
-   VIEWPORT
+   VIEWPORT UPDATE
 ========================= */
 
 function updateGameViewport() {
@@ -730,11 +664,21 @@ function updateGameViewport() {
     const height =
         window.innerHeight;
 
+
+    /*
+        Update overlay.
+    */
+
     gameOverlay.style.width =
         width + "px";
 
     gameOverlay.style.height =
         height + "px";
+
+
+    /*
+        Update iframe.
+    */
 
     gameFrame.style.width =
         width + "px";
@@ -742,17 +686,47 @@ function updateGameViewport() {
     gameFrame.style.height =
         height + "px";
 
+
     /*
-        Force the Exit button to remain
-        interactive after an orientation
-        change.
+        IMPORTANT:
+
+        Force iOS to invalidate the Exit
+        button's old layout/hit-test data.
     */
 
-    exitButton.style.zIndex =
-        "1003";
+    exitButton.style.top =
+        "calc(16px + env(safe-area-inset-top))";
 
-    exitButton.style.pointerEvents =
-        "auto";
+    exitButton.style.right =
+        "calc(16px + env(safe-area-inset-right))";
+
+
+    /*
+        Force a synchronous layout read.
+
+        This makes WebKit recalculate the
+        button's geometry immediately.
+    */
+
+    void exitButton.offsetTop;
+
+    void exitButton.offsetLeft;
+
+    void exitButton.offsetWidth;
+
+    void exitButton.offsetHeight;
+
+
+    /*
+        Re-establish its own compositing
+        layer after the viewport changes.
+    */
+
+    exitButton.style.transform =
+        "translateZ(0)";
+
+    exitButton.style.webkitTransform =
+        "translateZ(0)";
 }
 
 
@@ -764,9 +738,17 @@ window.addEventListener(
     "resize",
     () => {
 
-        requestAnimationFrame(() => {
-            updateGameViewport();
-        });
+        updateGameViewport();
+
+        setTimeout(
+            updateGameViewport,
+            50
+        );
+
+        setTimeout(
+            updateGameViewport,
+            150
+        );
 
     }
 );
@@ -779,13 +761,6 @@ window.addEventListener(
 window.addEventListener(
     "orientationchange",
     () => {
-
-        /*
-            iOS can perform several layout
-            passes during rotation.
-
-            Recalculate after each one.
-        */
 
         updateGameViewport();
 
@@ -814,17 +789,26 @@ window.addEventListener(
 
 
 /* =========================
-   EXIT EVENTS
+   VISUAL VIEWPORT
 ========================= */
 
-/*
-    pointerup is deliberately used in
-    addition to click.
+if (window.visualViewport) {
 
-    This makes the control more reliable
-    in iOS standalone Web Apps after
-    orientation changes.
-*/
+    window.visualViewport.addEventListener(
+        "resize",
+        () => {
+
+            updateGameViewport();
+
+        }
+    );
+
+}
+
+
+/* =========================
+   EXIT BUTTON
+========================= */
 
 exitButton.addEventListener(
     "pointerup",
@@ -837,18 +821,17 @@ exitButton.addEventListener(
     }
 );
 
+
+/*
+    Fallback for iOS/browser environments
+    that deliver click instead of pointerup.
+*/
+
 exitButton.addEventListener(
     "click",
     event => {
 
         event.preventDefault();
-
-        /*
-            pointerup normally handles iOS.
-
-            This is a fallback for browsers
-            that only fire click.
-        */
 
         if (gameOpen) {
             closeGame();
