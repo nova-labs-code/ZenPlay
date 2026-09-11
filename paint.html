@@ -33,8 +33,16 @@
 
         #clear {
             position: fixed;
-            right: 16px;
-            bottom: 16px;
+
+            right: max(
+                16px,
+                env(safe-area-inset-right)
+            );
+
+            bottom: max(
+                16px,
+                env(safe-area-inset-bottom)
+            );
 
             border: 0;
             border-radius: 10px;
