@@ -151,6 +151,9 @@
 
             user-select: none;
             -webkit-user-select: none;
+
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
         }
 
         #exitButton:hover {
@@ -217,252 +220,12 @@ let savedScrollPosition = 0;
 
 let gameOpen = false;
 
-
-/*
-    Rebuild the Exit button.
-
-    iOS Safari/WebKit can keep stale touch-hit
-    geometry after a device rotation.
-
-    Removing the old button and creating a
-    completely new one forces WebKit to create
-    a fresh hit-test region.
-*/
-
-function rebuildExitButton() {
-
-    if (!gameOpen) {
-        return;
-    }
-
-    const oldButton =
-        document.getElementById("exitButton");
-
-    if (oldButton) {
-        oldButton.remove();
-    }
-
-    const newButton =
-        document.createElement("button");
-
-    newButton.id = "exitButton";
-
-    newButton.type = "button";
-
-    newButton.textContent = "Exit";
-
-
-    /*
-        Use pointerup for touch devices.
-    */
-
-    newButton.addEventListener(
-        "pointerup",
-        event => {
-
-            event.preventDefault();
-            event.stopPropagation();
-
-            if (gameOpen) {
-                closeGame();
-            }
-
-        },
-        {
-            passive: false
-        }
-    );
-
-
-    /*
-        Click fallback for desktop.
-    */
-
-    newButton.addEventListener(
-        "click",
-        event => {
-
-            event.preventDefault();
-            event.stopPropagation();
-
-            if (gameOpen) {
-                closeGame();
-            }
-
-        }
-    );
-
-
-    gameOverlay.appendChild(newButton);
-
-    exitButton = newButton;
-
-
-    /*
-        Force WebKit to calculate the new
-        element's layout immediately.
-    */
-
-    void newButton.offsetWidth;
-    void newButton.offsetHeight;
-
-}
+let rebuildTimer = null;
 
 
 /*
-    Update the game viewport after rotation.
+    Load games
 */
-
-function updateGameViewport() {
-
-    if (!gameOpen) {
-        return;
-    }
-
-    const width =
-        window.innerWidth;
-
-    const height =
-        window.innerHeight;
-
-
-    gameOverlay.style.width =
-        width + "px";
-
-    gameOverlay.style.height =
-        height + "px";
-
-
-    gameFrame.style.width =
-        width + "px";
-
-    gameFrame.style.height =
-        height + "px";
-
-
-    /*
-        Force a fresh layout calculation.
-    */
-
-    void gameOverlay.offsetWidth;
-    void gameOverlay.offsetHeight;
-
-    void gameFrame.offsetWidth;
-    void gameFrame.offsetHeight;
-
-}
-
-
-/*
-    Rebuild after rotation.
-
-    Multiple passes are intentional because iOS
-    can update its viewport geometry in stages.
-*/
-
-function rebuildAfterRotation() {
-
-    if (!gameOpen) {
-        return;
-    }
-
-    updateGameViewport();
-
-    rebuildExitButton();
-
-
-    requestAnimationFrame(() => {
-
-        updateGameViewport();
-        rebuildExitButton();
-
-    });
-
-
-    setTimeout(() => {
-
-        updateGameViewport();
-        rebuildExitButton();
-
-    }, 50);
-
-
-    setTimeout(() => {
-
-        updateGameViewport();
-        rebuildExitButton();
-
-    }, 150);
-
-
-    setTimeout(() => {
-
-        updateGameViewport();
-        rebuildExitButton();
-
-    }, 300);
-
-
-    setTimeout(() => {
-
-        updateGameViewport();
-        rebuildExitButton();
-
-    }, 500);
-
-}
-
-
-/*
-    Orientation changes.
-*/
-
-window.addEventListener(
-    "orientationchange",
-    rebuildAfterRotation
-);
-
-
-/*
-    Resize also catches viewport changes
-    that may not fire orientationchange.
-*/
-
-window.addEventListener(
-    "resize",
-    () => {
-
-        if (!gameOpen) {
-            return;
-        }
-
-        updateGameViewport();
-
-    }
-);
-
-
-/*
-    iOS visual viewport changes.
-*/
-
-if (window.visualViewport) {
-
-    window.visualViewport.addEventListener(
-        "resize",
-        () => {
-
-            if (!gameOpen) {
-                return;
-            }
-
-            updateGameViewport();
-
-        }
-    );
-
-}
-
 
 async function loadGames() {
 
@@ -472,9 +235,11 @@ async function loadGames() {
             await fetch("games.json");
 
         if (!response.ok) {
+
             throw new Error(
                 "Could not load games.json"
             );
+
         }
 
         const data =
@@ -490,7 +255,9 @@ async function loadGames() {
             card.className = "game";
 
             card.onclick = () => {
+
                 openGame(game.file);
+
             };
 
             card.innerHTML = `
@@ -520,6 +287,199 @@ async function loadGames() {
 }
 
 
+/*
+    Update the game viewport
+*/
+
+function updateGameViewport() {
+
+    if (!gameOpen) {
+        return;
+    }
+
+    const width =
+        window.innerWidth;
+
+    const height =
+        window.innerHeight;
+
+    gameOverlay.style.width =
+        width + "px";
+
+    gameOverlay.style.height =
+        height + "px";
+
+    gameFrame.style.width =
+        width + "px";
+
+    gameFrame.style.height =
+        height + "px";
+
+    /*
+        Force WebKit to recalculate
+        the layout and hit-testing area.
+    */
+
+    void gameOverlay.offsetWidth;
+    void gameOverlay.offsetHeight;
+
+    void gameFrame.offsetWidth;
+    void gameFrame.offsetHeight;
+}
+
+
+/*
+    Rebuild the Exit button
+*/
+
+function rebuildExitButton() {
+
+    if (!gameOpen) {
+        return;
+    }
+
+    const oldButton =
+        document.getElementById("exitButton");
+
+    if (oldButton) {
+        oldButton.remove();
+    }
+
+    const newButton =
+        document.createElement("button");
+
+    newButton.id =
+        "exitButton";
+
+    newButton.type =
+        "button";
+
+    newButton.textContent =
+        "Exit";
+
+    newButton.addEventListener(
+        "pointerup",
+        event => {
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (gameOpen) {
+                closeGame();
+            }
+
+        },
+        {
+            passive: false
+        }
+    );
+
+    newButton.addEventListener(
+        "click",
+        event => {
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (gameOpen) {
+                closeGame();
+            }
+
+        }
+    );
+
+    gameOverlay.appendChild(
+        newButton
+    );
+
+    exitButton =
+        newButton;
+
+    /*
+        Force WebKit to create a fresh
+        layout/hit-test region.
+    */
+
+    void newButton.offsetWidth;
+    void newButton.offsetHeight;
+}
+
+
+/*
+    Wait until the rotation/UI adjustment
+    has completely finished.
+
+    Every new resize event resets the timer.
+    Therefore the button is not rebuilt
+    while iOS is still changing the UI.
+*/
+
+function scheduleButtonRebuild() {
+
+    if (!gameOpen) {
+        return;
+    }
+
+    clearTimeout(
+        rebuildTimer
+    );
+
+    rebuildTimer =
+        setTimeout(() => {
+
+            if (!gameOpen) {
+                return;
+            }
+
+            updateGameViewport();
+
+            rebuildExitButton();
+
+        }, 300);
+}
+
+
+/*
+    Rotation
+*/
+
+window.addEventListener(
+    "orientationchange",
+    scheduleButtonRebuild
+);
+
+
+/*
+    iOS can emit resize events while
+    the orientation is changing.
+*/
+
+window.addEventListener(
+    "resize",
+    scheduleButtonRebuild
+);
+
+
+/*
+    Also listen to visualViewport because
+    standalone iOS Web Apps can resize their
+    visual viewport during rotation.
+*/
+
+if (window.visualViewport) {
+
+    window.visualViewport.addEventListener(
+        "resize",
+        scheduleButtonRebuild
+    );
+
+}
+
+
+/*
+    Open game
+*/
+
 function openGame(file) {
 
     /*
@@ -529,14 +489,11 @@ function openGame(file) {
     savedScrollPosition =
         window.scrollY;
 
-
     /*
-        Mark the game as open BEFORE
-        rebuilding the button.
+        Mark the game as open.
     */
 
     gameOpen = true;
-
 
     /*
         Hide the games container.
@@ -544,7 +501,6 @@ function openGame(file) {
 
     gamesContainer.style.display =
         "none";
-
 
     /*
         Make the page black.
@@ -554,14 +510,12 @@ function openGame(file) {
         "playing"
     );
 
-
     /*
         Show the game.
     */
 
     gameOverlay.style.display =
         "block";
-
 
     /*
         Prevent scrolling.
@@ -570,7 +524,6 @@ function openGame(file) {
     document.body.style.overflow =
         "hidden";
 
-
     /*
         Load the game.
     */
@@ -578,43 +531,53 @@ function openGame(file) {
     gameFrame.src =
         file;
 
-
     /*
-        Build a fresh Exit button.
-    */
-
-    rebuildExitButton();
-
-
-    /*
-        Make sure the viewport geometry
-        is correct when opening.
+        Set the initial viewport.
     */
 
     updateGameViewport();
 
+    /*
+        Create a fresh Exit button
+        for the new game session.
+    */
+
+    rebuildExitButton();
+
 }
 
 
-function closeGame() {
+/*
+    Close game
+*/
 
-    /*
-        Prevent duplicate close events.
-    */
+function closeGame() {
 
     if (!gameOpen) {
         return;
     }
 
+    /*
+        Mark the game as closed first.
+    */
+
     gameOpen = false;
 
+    /*
+        Cancel any pending rebuild.
+    */
+
+    clearTimeout(
+        rebuildTimer
+    );
+
+    rebuildTimer = null;
 
     /*
         Stop the game.
     */
 
     gameFrame.src = "";
-
 
     /*
         Hide the game.
@@ -623,14 +586,12 @@ function closeGame() {
     gameOverlay.style.display =
         "none";
 
-
     /*
         Restore the games container.
     */
 
     gamesContainer.style.display =
         "";
-
 
     /*
         Restore the normal background.
@@ -640,7 +601,6 @@ function closeGame() {
         "playing"
     );
 
-
     /*
         Restore scrolling.
     */
@@ -648,11 +608,9 @@ function closeGame() {
     document.body.style.overflow =
         "";
 
-
     /*
         Restore the exact position
-        the user was at before opening
-        the game.
+        the user was at before opening.
     */
 
     requestAnimationFrame(() => {
@@ -666,6 +624,10 @@ function closeGame() {
 
 }
 
+
+/*
+    Start loading games.
+*/
 
 loadGames();
 
