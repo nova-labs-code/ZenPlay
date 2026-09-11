@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width,
+        initial-scale=1.0,
+        maximum-scale=1.0,
+        user-scalable=no,
+        viewport-fit=cover"
+    >
+
+    <meta
+        name="theme-color"
+        content="#08090d"
+    >
+
+    <title>License · ZenPlay</title>
+
+    <style>
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html {
+            margin: 0;
+            padding: 0;
+
+            width: 100%;
+            min-height: 100%;
+
+            background: #08090d;
+
+            overflow-x: hidden;
+        }
+
+        body {
+            margin: 0;
+            padding: 40px 20px;
+
+            width: 100%;
+            min-height: 100%;
+
+            font-family: Arial, sans-serif;
+
+            background: #08090d;
+            color: white;
+
+            overflow-x: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+
+            margin: 0 auto;
+        }
+
+        .license {
+            width: 100%;
+
+            padding: 30px;
+
+            border-radius: 18px;
+
+            background: #11131a;
+
+            border: 1px solid #242733;
+
+            overflow-wrap: break-word;
+        }
+
+        .license h1 {
+            margin: 0 0 25px;
+
+            font-size: 2.5rem;
+        }
+
+        .license h2 {
+            margin: 30px 0 15px;
+
+            font-size: 1.6rem;
+        }
+
+        .license h3 {
+            margin: 25px 0 12px;
+
+            font-size: 1.3rem;
+        }
+
+        .license p {
+            margin: 0 0 16px;
+
+            color: #c5c9d4;
+
+            line-height: 1.7;
+        }
+
+        .license ul,
+        .license ol {
+            margin: 0 0 20px;
+
+            padding-left: 25px;
+
+            color: #c5c9d4;
+
+            line-height: 1.7;
+        }
+
+        .license li {
+            margin-bottom: 6px;
+        }
+
+        .license a {
+            color: #9da3b4;
+        }
+
+        .license a:hover {
+            color: white;
+        }
+
+        .license strong {
+            color: white;
+        }
+
+        .license em {
+            color: #c5c9d4;
+        }
+
+        .license blockquote {
+            margin: 20px 0;
+
+            padding: 12px 18px;
+
+            border-left: 3px solid #4d556b;
+
+            color: #9da3b4;
+        }
+
+        .license code {
+            padding: 3px 6px;
+
+            border-radius: 5px;
+
+            background: #08090d;
+
+            color: #c5c9d4;
+
+            font-family: monospace;
+        }
+
+        .license pre {
+            width: 100%;
+
+            padding: 15px;
+
+            border-radius: 10px;
+
+            background: #08090d;
+
+            overflow-x: auto;
+        }
+
+        .license pre code {
+            padding: 0;
+
+            background: none;
+        }
+
+        .license hr {
+            margin: 30px 0;
+
+            border: 0;
+
+            border-top: 1px solid #242733;
+        }
+
+        .loading,
+        .error {
+            color: #9da3b4;
+
+            line-height: 1.6;
+        }
+
+        .back {
+            display: block;
+
+            margin: 30px 0 10px;
+
+            text-align: center;
+
+            color: #9da3b4;
+
+            font-size: 0.95rem;
+            font-weight: bold;
+
+            text-decoration: none;
+        }
+
+        .back:hover {
+            color: white;
+
+            text-decoration: underline;
+        }
+
+        @media (max-width: 600px) {
+
+            body {
+                padding: 25px 15px;
+            }
+
+            .license {
+                padding: 22px;
+            }
+
+            .license h1 {
+                font-size: 2rem;
+            }
+
+            .license h2 {
+                font-size: 1.4rem;
+            }
+
+        }
+
+    </style>
+
+</head>
+
+<body>
+
+    <main class="container">
+
+        <section
+            class="license"
+            id="license"
+        >
+
+            <div class="loading">
+                Loading license...
+            </div>
+
+        </section>
+
+        <a
+            class="back"
+            href="index.html"
+        >
+            ← Back to ZenPlay
+        </a>
+
+    </main>
+
+    <script
+        src="https://cdn.jsdelivr.net/npm/marked/marked.min.js">
+    </script>
+
+    <script>
+
+        async function loadLicense() {
+
+            const license =
+                document.getElementById(
+                    "license"
+                );
+
+            try {
+
+                const response =
+                    await fetch(
+                        "LICENSE.md",
+                        {
+                            cache: "no-store"
+                        }
+                    );
+
+                if (!response.ok) {
+
+                    throw new Error(
+                        "Could not load LICENSE.md"
+                    );
+
+                }
+
+                const markdown =
+                    await response.text();
+
+                license.innerHTML =
+                    marked.parse(
+                        markdown
+                    );
+
+            } catch (error) {
+
+                license.innerHTML = `
+                    <h1>
+                        License
+                    </h1>
+
+                    <p class="error">
+                        Unable to load LICENSE.md.
+                    </p>
+                `;
+
+                console.error(error);
+
+            }
+
+        }
+
+        loadLicense();
+
+    </script>
+
+</body>
+</html>
