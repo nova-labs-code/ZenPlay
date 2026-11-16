@@ -79,6 +79,16 @@
   "type": "Interactive",
   "controls": "Mouse or touch",
   "status": "available"
+},
+{
+  "id": "drift",
+  "name": "Drift",
+  "file": "drift.html",
+  "description": "Relax and shape realistic virtual sand with your finger or a rake.",
+  "category": "Satisfying",
+  "type": "Interactive",
+  "controls": "Mouse or touch",
+  "status": "available"
 }
   ]
 }
