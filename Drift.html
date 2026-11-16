@@ -1,0 +1,631 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#b9a58c">
+<title>Drift</title>
+
+<style>
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #b9a58c;
+  touch-action: none;
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#sand {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+.toolbar {
+  position: fixed;
+  z-index: 5;
+  top: max(18px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 7px;
+  padding: 7px;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 17px;
+  background: rgba(48, 40, 32, .68);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  box-shadow: 0 5px 24px rgba(45, 32, 20, .18);
+}
+
+.tool {
+  min-width: 88px;
+  padding: 11px 17px;
+  border: 0;
+  border-radius: 11px;
+  color: rgba(255,255,255,.75);
+  background: transparent;
+  font: 500 14px system-ui, sans-serif;
+}
+
+.tool.active {
+  color: #352b21;
+  background: #e9dcc9;
+  box-shadow: 0 2px 8px rgba(0,0,0,.13);
+}
+
+.hint {
+  position: fixed;
+  z-index: 4;
+  bottom: max(25px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  color: rgba(55, 44, 32, .62);
+  font: 12px system-ui, sans-serif;
+  letter-spacing: .4px;
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity 1s ease;
+}
+</style>
+</head>
+
+<body>
+
+<canvas id="sand"></canvas>
+
+<div class="toolbar">
+  <button class="tool active" id="fingerButton">Finger</button>
+  <button class="tool" id="rakeButton">Rake</button>
+</div>
+
+<div class="hint" id="hint">Touch the sand and gently move</div>
+
+<script src="./watermark.js" defer></script>
+
+<script>
+(() => {
+  "use strict";
+
+  const canvas = document.getElementById("sand");
+  const ctx = canvas.getContext("2d", { alpha: false });
+
+  const fingerButton = document.getElementById("fingerButton");
+  const rakeButton = document.getElementById("rakeButton");
+  const hint = document.getElementById("hint");
+
+  // Smaller cells create a finer surface.
+  const CELL_SIZE = 2;
+
+  // The sand returns to its original surface over five seconds.
+  const RESTORE_TIME = 5000;
+
+  // Physical simulation settings.
+  const SIMULATION_FPS = 30;
+  const GRAVITY_FLOW = 0.16;
+  const AVALANCHE_THRESHOLD = 0.115;
+  const MAX_FLOW = 0.045;
+
+  // The sand has several closely related natural colors.
+  const SAND_COLORS = [
+    [185, 165, 140],
+    [190, 170, 145],
+    [180, 159, 133],
+    [195, 176, 151],
+    [174, 154, 130],
+    [188, 168, 143],
+    [182, 163, 139]
+  ];
+
+  const BASE_HEIGHT = 1;
+
+  let width = 0;
+  let height = 0;
+  let gridWidth = 0;
+  let gridHeight = 0;
+  let count = 0;
+
+  let surface;
+  let nextSurface;
+  let changes;
+  let imageData;
+  let grainColors;
+  let grainNoise;
+  let renderCanvas;
+  let renderCtx;
+
+  let activeTool = "finger";
+  let pointerDown = false;
+  let lastPoint = null;
+  let lastFrame = performance.now();
+  let simulationAccumulator = 0;
+  let restoreStarted = null;
+  let hasInteracted = false;
+
+  let pixelRatio = 1;
+
+  const clamp = (v, min, max) =>
+    Math.max(min, Math.min(max, v));
+
+  function random(x, y) {
+    let n = Math.imul(x + 374761393, 668265263);
+    n = Math.imul(n ^ (n >>> 13), 1274126177);
+    n ^= y + (n >>> 16);
+    n = Math.imul(n, 2246822519);
+    n ^= n >>> 13;
+    return (n >>> 0) / 4294967295;
+  }
+
+  function gridIndex(x, y) {
+    return y * gridWidth + x;
+  }
+
+  function resize() {
+    width = window.innerWidth;
+    height = window.innerHeight;
+
+    pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+
+    canvas.width = Math.round(width * pixelRatio);
+    canvas.height = Math.round(height * pixelRatio);
+    canvas.style.width = width + "px";
+    canvas.style.height = height + "px";
+
+    ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+
+    gridWidth = Math.ceil(width / CELL_SIZE);
+    gridHeight = Math.ceil(height / CELL_SIZE);
+    count = gridWidth * gridHeight;
+
+    surface = new Float32Array(count);
+    nextSurface = new Float32Array(count);
+    changes = new Float32Array(count);
+
+    grainColors = new Uint8Array(count * 3);
+    grainNoise = new Float32Array(count);
+
+    imageData = new ImageData(gridWidth, gridHeight);
+
+    renderCanvas = document.createElement("canvas");
+    renderCanvas.width = gridWidth;
+    renderCanvas.height = gridHeight;
+
+    renderCtx = renderCanvas.getContext("2d");
+
+    for (let y = 0; y < gridHeight; y++) {
+      for (let x = 0; x < gridWidth; x++) {
+        const i = gridIndex(x, y);
+
+        surface[i] = BASE_HEIGHT;
+
+        const colorIndex = Math.floor(
+          random(x * 7 + 11, y * 13 + 5) * SAND_COLORS.length
+        );
+
+        const color = SAND_COLORS[colorIndex];
+
+        const p = i * 3;
+
+        grainColors[p] = color[0];
+        grainColors[p + 1] = color[1];
+        grainColors[p + 2] = color[2];
+
+        grainNoise[i] =
+          (random(x * 31 + 3, y * 17 + 9) - 0.5) * 3.5;
+      }
+    }
+
+    lastPoint = null;
+    render();
+  }
+
+  // Adds or removes sand from a small area.
+  // The raised edges receive the sand displaced by the groove.
+  function fingerStamp(x, y, dx, dy) {
+    const length = Math.hypot(dx, dy) || 1;
+
+    const directionX = dx / length;
+    const directionY = dy / length;
+
+    const normalX = -directionY;
+    const normalY = directionX;
+
+    const radius = 10;
+    const reach = 13;
+
+    const minX = Math.max(0, Math.floor((x - reach) / CELL_SIZE));
+    const maxX = Math.min(gridWidth - 1, Math.ceil((x + reach) / CELL_SIZE));
+    const minY = Math.max(0, Math.floor((y - reach) / CELL_SIZE));
+    const maxY = Math.min(gridHeight - 1, Math.ceil((y + reach) / CELL_SIZE));
+
+    for (let gy = minY; gy <= maxY; gy++) {
+      for (let gx = minX; gx <= maxX; gx++) {
+        const px = gx * CELL_SIZE;
+        const py = gy * CELL_SIZE;
+
+        const rx = px - x;
+        const ry = py - y;
+
+        const along = rx * directionX + ry * directionY;
+        const across = rx * normalX + ry * normalY;
+
+        const alongFade = Math.exp(
+          -(along * along) / (radius * radius)
+        );
+
+        const groove = Math.exp(
+          -(across * across) / 5.2
+        );
+
+        const bankLeft = Math.exp(
+          -((across - 5.2) ** 2) / 8
+        );
+
+        const bankRight = Math.exp(
+          -((across + 5.2) ** 2) / 8
+        );
+
+        const displacement =
+          (-0.27 * groove +
+            0.135 * bankLeft +
+            0.135 * bankRight) * alongFade;
+
+        const i = gridIndex(gx, gy);
+
+        surface[i] = clamp(
+          surface[i] + displacement,
+          0.18,
+          2.5
+        );
+      }
+    }
+  }
+
+  // A small rake with several narrow teeth.
+  function rakeStamp(x, y, dx, dy) {
+    const length = Math.hypot(dx, dy) || 1;
+
+    const directionX = dx / length;
+    const directionY = dy / length;
+
+    const normalX = -directionY;
+    const normalY = directionX;
+
+    const toothCount = 7;
+    const spacing = 4.5;
+    const halfWidth = (toothCount - 1) * spacing / 2;
+
+    const reach = halfWidth + 7;
+
+    const minX = Math.max(0, Math.floor((x - reach) / CELL_SIZE));
+    const maxX = Math.min(gridWidth - 1, Math.ceil((x + reach) / CELL_SIZE));
+    const minY = Math.max(0, Math.floor((y - reach) / CELL_SIZE));
+    const maxY = Math.min(gridHeight - 1, Math.ceil((y + reach) / CELL_SIZE));
+
+    for (let gy = minY; gy <= maxY; gy++) {
+      for (let gx = minX; gx <= maxX; gx++) {
+        const px = gx * CELL_SIZE;
+        const py = gy * CELL_SIZE;
+
+        const rx = px - x;
+        const ry = py - y;
+
+        const along = rx * directionX + ry * directionY;
+        const across = rx * normalX + ry * normalY;
+
+        const alongFade = Math.exp(
+          -(along * along) / 125
+        );
+
+        let displacement = 0;
+
+        for (let tooth = 0; tooth < toothCount; tooth++) {
+          const offset = tooth * spacing - halfWidth;
+          const distance = across - offset;
+
+          const groove = Math.exp(
+            -(distance * distance) / 2.5
+          );
+
+          const bankA = Math.exp(
+            -((distance - 2.7) ** 2) / 4
+          );
+
+          const bankB = Math.exp(
+            -((distance + 2.7) ** 2) / 4
+          );
+
+          displacement +=
+            (-0.16 * groove +
+              0.08 * bankA +
+              0.08 * bankB);
+        }
+
+        const i = gridIndex(gx, gy);
+
+        surface[i] = clamp(
+          surface[i] + displacement * alongFade,
+          0.18,
+          2.5
+        );
+      }
+    }
+  }
+
+  function applyTool(x, y, dx, dy) {
+    if (activeTool === "finger") {
+      fingerStamp(x, y, dx, dy);
+    } else {
+      rakeStamp(x, y, dx, dy);
+    }
+
+    hasInteracted = true;
+    restoreStarted = null;
+    hint.style.opacity = "0";
+  }
+
+  function getPosition(event) {
+    return {
+      x: event.clientX,
+      y: event.clientY
+    };
+  }
+
+  canvas.addEventListener("pointerdown", event => {
+    event.preventDefault();
+
+    pointerDown = true;
+    canvas.setPointerCapture(event.pointerId);
+
+    const point = getPosition(event);
+    lastPoint = point;
+
+    applyTool(point.x, point.y, 1, 0);
+  });
+
+  canvas.addEventListener("pointermove", event => {
+    if (!pointerDown || !lastPoint) return;
+
+    event.preventDefault();
+
+    const point = getPosition(event);
+
+    const dx = point.x - lastPoint.x;
+    const dy = point.y - lastPoint.y;
+    const distance = Math.hypot(dx, dy);
+
+    if (distance < 0.4) return;
+
+    // Small steps prevent gaps when the finger moves quickly.
+    const steps = Math.max(1, Math.ceil(distance / 1.8));
+
+    for (let step = 1; step <= steps; step++) {
+      const t = step / steps;
+
+      const x = lastPoint.x + dx * t;
+      const y = lastPoint.y + dy * t;
+
+      applyTool(x, y, dx, dy);
+    }
+
+    lastPoint = point;
+  });
+
+  function endPointer() {
+    if (!pointerDown) return;
+
+    pointerDown = false;
+    lastPoint = null;
+
+    if (hasInteracted) {
+      restoreStarted = performance.now();
+    }
+  }
+
+  canvas.addEventListener("pointerup", endPointer);
+  canvas.addEventListener("pointercancel", endPointer);
+  canvas.addEventListener("lostpointercapture", endPointer);
+
+  fingerButton.addEventListener("click", () => {
+    activeTool = "finger";
+    fingerButton.classList.add("active");
+    rakeButton.classList.remove("active");
+  });
+
+  rakeButton.addEventListener("click", () => {
+    activeTool = "rake";
+    rakeButton.classList.add("active");
+    fingerButton.classList.remove("active");
+  });
+
+  // Granular avalanche simulation:
+  // higher areas slowly transfer material to lower neighboring cells.
+  function simulateSand() {
+    changes.fill(0);
+
+    for (let y = 1; y < gridHeight - 1; y++) {
+      for (let x = 1; x < gridWidth - 1; x++) {
+        const i = gridIndex(x, y);
+        const current = surface[i];
+
+        let lowestIndex = -1;
+        let lowestHeight = current;
+
+        const neighbors = [
+          i - 1,
+          i + 1,
+          i - gridWidth,
+          i + gridWidth
+        ];
+
+        for (let n = 0; n < 4; n++) {
+          const neighborIndex = neighbors[n];
+          const neighborHeight = surface[neighborIndex];
+
+          if (neighborHeight < lowestHeight) {
+            lowestHeight = neighborHeight;
+            lowestIndex = neighborIndex;
+          }
+        }
+
+        if (lowestIndex === -1) continue;
+
+        const difference = current - lowestHeight;
+
+        if (difference <= AVALANCHE_THRESHOLD) continue;
+
+        const flow = Math.min(
+          MAX_FLOW,
+          (difference - AVALANCHE_THRESHOLD) * GRAVITY_FLOW
+        );
+
+        changes[i] -= flow;
+        changes[lowestIndex] += flow;
+      }
+    }
+
+    for (let i = 0; i < count; i++) {
+      nextSurface[i] = clamp(
+        surface[i] + changes[i],
+        0.18,
+        2.5
+      );
+    }
+
+    const previous = surface;
+    surface = nextSurface;
+    nextSurface = previous;
+  }
+
+  // Gradually returns the disturbed surface to its original level.
+  function restoreSand(deltaTime) {
+    if (pointerDown || restoreStarted === null) return;
+
+    const elapsed = performance.now() - restoreStarted;
+
+    if (elapsed >= RESTORE_TIME) {
+      surface.fill(BASE_HEIGHT);
+      restoreStarted = null;
+      hasInteracted = false;
+      return;
+    }
+
+    const factor = Math.pow(
+      0.001,
+      deltaTime / RESTORE_TIME
+    );
+
+    for (let i = 0; i < count; i++) {
+      surface[i] =
+        BASE_HEIGHT +
+        (surface[i] - BASE_HEIGHT) * factor;
+    }
+  }
+
+  // Render the height field with subtle color variation
+  // and directional lighting to show the shape of the sand.
+  function render() {
+    const data = imageData.data;
+
+    for (let y = 0; y < gridHeight; y++) {
+      for (let x = 0; x < gridWidth; x++) {
+        const i = gridIndex(x, y);
+
+        const left = surface[gridIndex(Math.max(0, x - 1), y)];
+        const right = surface[gridIndex(Math.min(gridWidth - 1, x + 1), y)];
+        const up = surface[gridIndex(x, Math.max(0, y - 1))];
+        const down = surface[gridIndex(x, Math.min(gridHeight - 1, y + 1))];
+
+        const slopeX = right - left;
+        const slopeY = down - up;
+
+        // Soft light from the upper-left.
+        const light = clamp(
+          1 - slopeX * 0.75 - slopeY * 0.9,
+          0.76,
+          1.24
+        );
+
+        // Slightly darker sand in deeper areas.
+        const depth = (surface[i] - BASE_HEIGHT) * 0.045;
+        const shade = clamp(light + depth, 0.72, 1.28);
+
+        const colorIndex = i * 3;
+        const pixelIndex = i * 4;
+
+        const noise = grainNoise[i];
+
+        data[pixelIndex] = clamp(
+          grainColors[colorIndex] * shade + noise,
+          0, 255
+        );
+
+        data[pixelIndex + 1] = clamp(
+          grainColors[colorIndex + 1] * shade + noise,
+          0, 255
+        );
+
+        data[pixelIndex + 2] = clamp(
+          grainColors[colorIndex + 2] * shade + noise,
+          0, 255
+        );
+
+        data[pixelIndex + 3] = 255;
+      }
+    }
+
+    renderCtx.putImageData(imageData, 0, 0);
+
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+
+    ctx.drawImage(
+      renderCanvas,
+      0,
+      0,
+      width,
+      height
+    );
+  }
+
+  function frame(now) {
+    const deltaTime = Math.min(now - lastFrame, 50);
+    lastFrame = now;
+
+    simulationAccumulator += deltaTime;
+
+    const simulationStep = 1000 / SIMULATION_FPS;
+
+    while (simulationAccumulator >= simulationStep) {
+      simulateSand();
+      simulationAccumulator -= simulationStep;
+    }
+
+    restoreSand(deltaTime);
+    render();
+
+    requestAnimationFrame(frame);
+  }
+
+  window.addEventListener("resize", resize);
+
+  resize();
+  requestAnimationFrame(frame);
+})();
+</script>
+
+</body>
+</html>
