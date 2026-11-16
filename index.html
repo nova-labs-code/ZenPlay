@@ -228,11 +228,10 @@
         #gameOverlay {
             position: fixed;
 
-            left: 0;
-            top: 0;
+            inset: 0;
 
             width: 100%;
-            height: 100vh;
+            height: 100%;
             height: 100dvh;
 
             margin: 0;
@@ -245,11 +244,6 @@
             overflow: hidden;
 
             z-index: 1000;
-
-            /*
-             * Do not block interaction inside
-             * the iframe.
-             */
 
             touch-action: auto;
 
@@ -265,8 +259,7 @@
         #gameFrame {
             position: absolute;
 
-            left: 0;
-            top: 0;
+            inset: 0;
 
             width: 100%;
             height: 100%;
@@ -282,12 +275,8 @@
 
             z-index: 1;
 
-            max-width: 100%;
-            max-height: 100%;
-
-            /*
-             * Important for touch-based games.
-             */
+            max-width: none;
+            max-height: none;
 
             touch-action: auto;
 
@@ -296,7 +285,7 @@
 
         /*
          * ========================================================
-         * GAME LOADING SCREEN
+         * LOADING SCREEN
          * ========================================================
          */
 
@@ -334,11 +323,10 @@
         #gameControls {
             position: fixed;
 
-            left: 0;
-            top: 0;
+            inset: 0;
 
             width: 100%;
-            height: 100vh;
+            height: 100%;
             height: 100dvh;
 
             margin: 0;
@@ -349,11 +337,6 @@
             overflow: hidden;
 
             z-index: 2000;
-
-            /*
-             * Allows game interaction everywhere
-             * except on the exit button.
-             */
 
             pointer-events: none;
         }
@@ -494,6 +477,7 @@
         }
 
     </style>
+
 </head>
 
 <body>
@@ -697,10 +681,6 @@
                             "0"
                         );
 
-                        /*
-                         * Create content safely.
-                         */
-
                         const heading =
                             document.createElement(
                                 "h2"
@@ -736,7 +716,7 @@
 
 
                         /*
-                         * Mouse and touch interaction.
+                         * CARD INTERACTION
                          */
 
                         card.addEventListener(
@@ -752,7 +732,7 @@
 
 
                         /*
-                         * Keyboard interaction.
+                         * KEYBOARD INTERACTION
                          */
 
                         card.addEventListener(
@@ -796,45 +776,30 @@
 
         /*
          * ========================================================
-         * GET LAYOUT VIEWPORT
+         * GET VIEWPORT SIZE
          * ========================================================
          */
 
         function getViewportSize() {
 
-            /*
-             * visualViewport is more accurate on
-             * mobile Safari when browser controls
-             * appear or disappear.
-             */
-
-            const visual =
-                window.visualViewport;
-
             const root =
                 document.documentElement;
 
-            const width =
-                visual && visual.width
-                    ? visual.width
-                    : root.clientWidth || window.innerWidth;
-
-            const height =
-                visual && visual.height
-                    ? visual.height
-                    : root.clientHeight || window.innerHeight;
-
             return {
 
-                width: Math.max(
-                    1,
-                    Math.round(width)
-                ),
+                width:
+                    Math.max(
+                        1,
+                        root.clientWidth ||
+                        window.innerWidth
+                    ),
 
-                height: Math.max(
-                    1,
-                    Math.round(height)
-                )
+                height:
+                    Math.max(
+                        1,
+                        root.clientHeight ||
+                        window.innerHeight
+                    )
 
             };
 
@@ -845,6 +810,14 @@
          * ========================================================
          * UPDATE GAME VIEWPORT
          * ========================================================
+         *
+         * IMPORTANT:
+         * CSS controls the fullscreen dimensions.
+         * Do not use visualViewport pixel dimensions
+         * here, as they can cause partial iframe sizing
+         * on iPhone Safari.
+         *
+         * ========================================================
          */
 
         function updateGameViewport() {
@@ -853,65 +826,34 @@
                 return;
             }
 
-            const viewport =
-                getViewportSize();
-
-            const width =
-                viewport.width;
-
-            const height =
-                viewport.height;
-
-
-            /*
-             * Update overlay.
-             */
-
-            gameOverlay.style.left =
-                "0px";
-
-            gameOverlay.style.top =
-                "0px";
+            gameOverlay.style.inset =
+                "0";
 
             gameOverlay.style.width =
-                width + "px";
+                "100%";
 
             gameOverlay.style.height =
-                height + "px";
+                "100%";
 
 
-            /*
-             * Update iframe.
-             */
-
-            gameFrame.style.left =
-                "0px";
-
-            gameFrame.style.top =
-                "0px";
+            gameFrame.style.inset =
+                "0";
 
             gameFrame.style.width =
-                width + "px";
+                "100%";
 
             gameFrame.style.height =
-                height + "px";
+                "100%";
 
 
-            /*
-             * Update controls.
-             */
-
-            gameControls.style.left =
-                "0px";
-
-            gameControls.style.top =
-                "0px";
+            gameControls.style.inset =
+                "0";
 
             gameControls.style.width =
-                width + "px";
+                "100%";
 
             gameControls.style.height =
-                height + "px";
+                "100%";
 
         }
 
@@ -953,12 +895,6 @@
                 rotationTimer
             );
 
-
-            /*
-             * Wait for the browser to finish
-             * changing orientation.
-             */
-
             rotationTimer =
                 setTimeout(
                     () => {
@@ -988,7 +924,7 @@
                         );
 
                     },
-                    150
+                    200
                 );
 
         }
@@ -1009,13 +945,6 @@
             clearTimeout(
                 resizeTimer
             );
-
-
-            /*
-             * Avoid repeatedly forcing layout.
-             * Only update when the browser has
-             * had time to settle.
-             */
 
             resizeTimer =
                 setTimeout(
@@ -1059,20 +988,12 @@
                 loadTimer
             );
 
-            /*
-             * Remove loading screen.
-             */
-
             gameOverlay.classList.remove(
                 "loading"
             );
 
-
-            /*
-             * Give the game frame focus.
-             * This helps games using keyboard
-             * controls where supported.
-             */
+            gameFrame.style.visibility =
+                "visible";
 
             try {
 
@@ -1105,7 +1026,6 @@
             ) {
                 return;
             }
-
 
             /*
              * Save the ZenPlay Home Screen
@@ -1159,8 +1079,7 @@
 
 
             /*
-             * Establish the viewport before
-             * assigning the game URL.
+             * Establish fullscreen layout.
              */
 
             gameFrame.style.visibility =
@@ -1172,7 +1091,6 @@
             gameFrame.style.height =
                 "100%";
 
-
             forceLayout();
 
             updateGameViewport();
@@ -1180,7 +1098,7 @@
 
             /*
              * Register load handlers before
-             * starting the navigation.
+             * starting navigation.
              */
 
             gameFrame.onload =
@@ -1210,6 +1128,9 @@
                         "loading"
                     );
 
+                    gameFrame.style.visibility =
+                        "visible";
+
                     console.error(
                         "Game failed to load:",
                         currentGame
@@ -1227,8 +1148,7 @@
 
 
             /*
-             * Show the frame after the initial
-             * layout has been established.
+             * Establish final layout.
              */
 
             requestAnimationFrame(
@@ -1250,8 +1170,8 @@
 
 
             /*
-             * Fallback in case a browser does not
-             * fire the load event as expected.
+             * Fallback if the load event does
+             * not fire as expected.
              */
 
             loadTimer =
@@ -1366,10 +1286,7 @@
             gameFrame.style.height =
                 "";
 
-            gameFrame.style.left =
-                "";
-
-            gameFrame.style.top =
+            gameFrame.style.inset =
                 "";
 
             gameFrame.style.visibility =
@@ -1386,16 +1303,12 @@
             gameOverlay.style.height =
                 "";
 
-            gameOverlay.style.left =
-                "";
-
-            gameOverlay.style.top =
+            gameOverlay.style.inset =
                 "";
 
 
             /*
-             * Restore the Home Screen to
-             * exactly where it was.
+             * Restore Home Screen position.
              */
 
             requestAnimationFrame(
