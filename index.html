@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -114,11 +115,19 @@
             transition:
                 transform 0.2s,
                 border-color 0.2s;
+
+            -webkit-tap-highlight-color: transparent;
+
+            touch-action: manipulation;
         }
 
         .game:hover {
             transform: translateY(-4px);
             border-color: #4d556b;
+        }
+
+        .game:active {
+            transform: scale(0.985);
         }
 
         .game h2 {
@@ -185,6 +194,12 @@
             text-decoration: underline;
         }
 
+        /*
+         * ========================================================
+         * PLAYING MODE
+         * ========================================================
+         */
+
         body.playing {
             padding: 0;
             margin: 0;
@@ -195,6 +210,8 @@
             overflow: hidden;
 
             background: #000;
+
+            overscroll-behavior: none;
         }
 
         body.playing .container,
@@ -202,14 +219,21 @@
             display: none;
         }
 
+        /*
+         * ========================================================
+         * GAME OVERLAY
+         * ========================================================
+         */
+
         #gameOverlay {
-            position: absolute;
+            position: fixed;
 
             left: 0;
             top: 0;
 
             width: 100%;
             height: 100vh;
+            height: 100dvh;
 
             margin: 0;
             padding: 0;
@@ -222,8 +246,21 @@
 
             z-index: 1000;
 
-            touch-action: none;
+            /*
+             * Do not block interaction inside
+             * the iframe.
+             */
+
+            touch-action: auto;
+
+            overscroll-behavior: none;
         }
+
+        /*
+         * ========================================================
+         * GAME FRAME
+         * ========================================================
+         */
 
         #gameFrame {
             position: absolute;
@@ -247,16 +284,62 @@
 
             max-width: 100%;
             max-height: 100%;
+
+            /*
+             * Important for touch-based games.
+             */
+
+            touch-action: auto;
+
+            -webkit-overflow-scrolling: touch;
         }
 
-        #gameControls {
+        /*
+         * ========================================================
+         * GAME LOADING SCREEN
+         * ========================================================
+         */
+
+        #loadingScreen {
             position: absolute;
+
+            inset: 0;
+
+            display: none;
+
+            align-items: center;
+            justify-content: center;
+
+            background: #08090d;
+
+            color: #9da3b4;
+
+            font-size: 14px;
+
+            z-index: 5;
+
+            pointer-events: none;
+        }
+
+        #gameOverlay.loading #loadingScreen {
+            display: flex;
+        }
+
+        /*
+         * ========================================================
+         * GAME CONTROLS
+         * ========================================================
+         */
+
+        #gameControls {
+            position: fixed;
 
             left: 0;
             top: 0;
 
             width: 100%;
             height: 100vh;
+            height: 100dvh;
 
             margin: 0;
             padding: 0;
@@ -267,8 +350,19 @@
 
             z-index: 2000;
 
+            /*
+             * Allows game interaction everywhere
+             * except on the exit button.
+             */
+
             pointer-events: none;
         }
+
+        /*
+         * ========================================================
+         * EXIT BUTTON
+         * ========================================================
+         */
 
         #exitButton {
             position: absolute;
@@ -316,6 +410,8 @@
 
             touch-action: manipulation;
 
+            -webkit-tap-highlight-color: transparent;
+
             z-index: 2001;
 
             -webkit-backdrop-filter:
@@ -335,6 +431,44 @@
                 );
         }
 
+        #exitButton:active {
+            background:
+                rgba(
+                    55,
+                    55,
+                    65,
+                    0.95
+                );
+        }
+
+        /*
+         * ========================================================
+         * MOBILE
+         * ========================================================
+         */
+
+        @media (max-width: 600px) {
+
+            body {
+                padding: 30px 16px;
+            }
+
+            h1 {
+                font-size: 2.5rem;
+            }
+
+            .games {
+                grid-template-columns: 1fr;
+            }
+
+        }
+
+        /*
+         * ========================================================
+         * STANDALONE MODE
+         * ========================================================
+         */
+
         @media all and (display-mode: standalone) {
 
             html {
@@ -353,7 +487,8 @@
 
             #gameOverlay,
             #gameControls {
-                height: 100vh;
+                height: 100%;
+                height: 100dvh;
             }
 
         }
@@ -414,9 +549,15 @@
 
     <div id="gameOverlay">
 
+        <div id="loadingScreen">
+            Loading game...
+        </div>
+
         <iframe
             id="gameFrame"
+            title="ZenPlay game"
             allow="fullscreen"
+            allowfullscreen
             scrolling="no">
         </iframe>
 
@@ -427,8 +568,7 @@
         <button
             id="exitButton"
             type="button"
-            aria-label="Exit game"
-            onclick="closeGame()">
+            aria-label="Exit game">
 
             Exit
 
@@ -436,7 +576,7 @@
 
     </div>
 
-    <script src="watermark.js"></script>
+    <script src="watermark.js" defer></script>
 
     <script>
 
@@ -484,7 +624,13 @@
 
         let rotationTimer = null;
 
+        let loadTimer = null;
+
         let homeScrollPosition = 0;
+
+        let currentGame = "";
+
+        let gameLoadVersion = 0;
 
 
         /*
@@ -499,7 +645,10 @@
 
                 const response =
                     await fetch(
-                        "games.json"
+                        "games.json",
+                        {
+                            cache: "no-cache"
+                        }
                     );
 
                 if (!response.ok) {
@@ -512,6 +661,17 @@
 
                 const data =
                     await response.json();
+
+                if (
+                    !data ||
+                    !Array.isArray(data.games)
+                ) {
+
+                    throw new Error(
+                        "Invalid games.json format"
+                    );
+
+                }
 
                 gamesContainer.innerHTML =
                     "";
@@ -527,30 +687,93 @@
                         card.className =
                             "game";
 
-                        card.onclick =
+                        card.setAttribute(
+                            "role",
+                            "button"
+                        );
+
+                        card.setAttribute(
+                            "tabindex",
+                            "0"
+                        );
+
+                        /*
+                         * Create content safely.
+                         */
+
+                        const heading =
+                            document.createElement(
+                                "h2"
+                            );
+
+                        heading.textContent =
+                            game.name || "Untitled game";
+
+                        const description =
+                            document.createElement(
+                                "p"
+                            );
+
+                        description.textContent =
+                            game.description || "";
+
+                        const info =
+                            document.createElement(
+                                "div"
+                            );
+
+                        info.className =
+                            "game-info";
+
+                        info.textContent =
+                            `${game.category || "Game"} · ${game.type || "Interactive"}`;
+
+                        card.append(
+                            heading,
+                            description,
+                            info
+                        );
+
+
+                        /*
+                         * Mouse and touch interaction.
+                         */
+
+                        card.addEventListener(
+                            "click",
                             () => {
 
                                 openGame(
                                     game.file
                                 );
 
-                            };
+                            }
+                        );
 
-                        card.innerHTML = `
-                            <h2>
-                                ${game.name}
-                            </h2>
 
-                            <p>
-                                ${game.description}
-                            </p>
+                        /*
+                         * Keyboard interaction.
+                         */
 
-                            <div class="game-info">
-                                ${game.category}
-                                ·
-                                ${game.type}
-                            </div>
-                        `;
+                        card.addEventListener(
+                            "keydown",
+                            event => {
+
+                                if (
+                                    event.key === "Enter" ||
+                                    event.key === " "
+                                ) {
+
+                                    event.preventDefault();
+
+                                    openGame(
+                                        game.file
+                                    );
+
+                                }
+
+                            }
+                        );
 
                         gamesContainer.appendChild(
                             card
@@ -561,7 +784,7 @@
 
             } catch (error) {
 
-                gamesContainer.innerHTML =
+                gamesContainer.textContent =
                     "Unable to load games.";
 
                 console.error(error);
@@ -579,24 +802,39 @@
 
         function getViewportSize() {
 
+            /*
+             * visualViewport is more accurate on
+             * mobile Safari when browser controls
+             * appear or disappear.
+             */
+
+            const visual =
+                window.visualViewport;
+
             const root =
                 document.documentElement;
 
+            const width =
+                visual && visual.width
+                    ? visual.width
+                    : root.clientWidth || window.innerWidth;
+
+            const height =
+                visual && visual.height
+                    ? visual.height
+                    : root.clientHeight || window.innerHeight;
+
             return {
 
-                width:
-                    Math.max(
-                        1,
-                        root.clientWidth ||
-                        window.innerWidth
-                    ),
+                width: Math.max(
+                    1,
+                    Math.round(width)
+                ),
 
-                height:
-                    Math.max(
-                        1,
-                        root.clientHeight ||
-                        window.innerHeight
-                    )
+                height: Math.max(
+                    1,
+                    Math.round(height)
+                )
 
             };
 
@@ -619,14 +857,15 @@
                 getViewportSize();
 
             const width =
-                Math.round(
-                    viewport.width
-                );
+                viewport.width;
 
             const height =
-                Math.round(
-                    viewport.height
-                );
+                viewport.height;
+
+
+            /*
+             * Update overlay.
+             */
 
             gameOverlay.style.left =
                 "0px";
@@ -640,6 +879,11 @@
             gameOverlay.style.height =
                 height + "px";
 
+
+            /*
+             * Update iframe.
+             */
+
             gameFrame.style.left =
                 "0px";
 
@@ -652,6 +896,11 @@
             gameFrame.style.height =
                 height + "px";
 
+
+            /*
+             * Update controls.
+             */
+
             gameControls.style.left =
                 "0px";
 
@@ -663,12 +912,6 @@
 
             gameControls.style.height =
                 height + "px";
-
-            void gameOverlay.offsetWidth;
-
-            void gameFrame.offsetWidth;
-
-            void gameControls.offsetWidth;
 
         }
 
@@ -710,59 +953,43 @@
                 rotationTimer
             );
 
-            gameFrame.style.visibility =
-                "hidden";
 
-            requestAnimationFrame(
-                () => {
+            /*
+             * Wait for the browser to finish
+             * changing orientation.
+             */
 
-                    forceLayout();
+            rotationTimer =
+                setTimeout(
+                    () => {
 
-                    updateGameViewport();
-
-                    requestAnimationFrame(
-                        () => {
-
-                            forceLayout();
-
-                            updateGameViewport();
-
-                            requestAnimationFrame(
-                                () => {
-
-                                    forceLayout();
-
-                                    updateGameViewport();
-
-                                    rotationTimer =
-                                        setTimeout(
-                                            () => {
-
-                                                requestAnimationFrame(
-                                                    () => {
-
-                                                        forceLayout();
-
-                                                        updateGameViewport();
-
-                                                        gameFrame.style.visibility =
-                                                            "visible";
-
-                                                    }
-                                                );
-
-                                            },
-                                            250
-                                        );
-
-                                }
-                            );
-
+                        if (!gameOpen) {
+                            return;
                         }
-                    );
 
-                }
-            );
+                        requestAnimationFrame(
+                            () => {
+
+                                forceLayout();
+
+                                updateGameViewport();
+
+                                requestAnimationFrame(
+                                    () => {
+
+                                        forceLayout();
+
+                                        updateGameViewport();
+
+                                    }
+                                );
+
+                            }
+                        );
+
+                    },
+                    150
+                );
 
         }
 
@@ -783,16 +1010,23 @@
                 resizeTimer
             );
 
-            updateGameViewport();
+
+            /*
+             * Avoid repeatedly forcing layout.
+             * Only update when the browser has
+             * had time to settle.
+             */
 
             resizeTimer =
                 setTimeout(
                     () => {
 
+                        if (!gameOpen) {
+                            return;
+                        }
+
                         requestAnimationFrame(
                             () => {
-
-                                forceLayout();
 
                                 updateGameViewport();
 
@@ -800,8 +1034,58 @@
                         );
 
                     },
-                    100
+                    120
                 );
+
+        }
+
+
+        /*
+         * ========================================================
+         * GAME LOADING
+         * ========================================================
+         */
+
+        function handleGameLoaded(version) {
+
+            if (
+                !gameOpen ||
+                version !== gameLoadVersion
+            ) {
+                return;
+            }
+
+            clearTimeout(
+                loadTimer
+            );
+
+            /*
+             * Remove loading screen.
+             */
+
+            gameOverlay.classList.remove(
+                "loading"
+            );
+
+
+            /*
+             * Give the game frame focus.
+             * This helps games using keyboard
+             * controls where supported.
+             */
+
+            try {
+
+                gameFrame.contentWindow.focus();
+
+            } catch (error) {
+
+                console.warn(
+                    "Could not focus game frame.",
+                    error
+                );
+
+            }
 
         }
 
@@ -814,9 +1098,14 @@
 
         function openGame(file) {
 
-            if (gameOpen) {
+            if (
+                gameOpen ||
+                !file ||
+                typeof file !== "string"
+            ) {
                 return;
             }
+
 
             /*
              * Save the ZenPlay Home Screen
@@ -830,6 +1119,13 @@
 
 
             gameOpen = true;
+
+            currentGame = file;
+
+            gameLoadVersion++;
+
+            const thisLoadVersion =
+                gameLoadVersion;
 
 
             /*
@@ -854,28 +1150,72 @@
             gameOverlay.style.display =
                 "block";
 
+            gameOverlay.classList.add(
+                "loading"
+            );
+
             gameControls.style.display =
                 "block";
 
 
             /*
-             * Hide iframe while its first
-             * viewport is established.
+             * Establish the viewport before
+             * assigning the game URL.
              */
 
             gameFrame.style.visibility =
                 "hidden";
 
-
-            /*
-             * Reset stale dimensions.
-             */
-
             gameFrame.style.width =
-                "0px";
+                "100%";
 
             gameFrame.style.height =
-                "0px";
+                "100%";
+
+
+            forceLayout();
+
+            updateGameViewport();
+
+
+            /*
+             * Register load handlers before
+             * starting the navigation.
+             */
+
+            gameFrame.onload =
+                () => {
+
+                    handleGameLoaded(
+                        thisLoadVersion
+                    );
+
+                };
+
+            gameFrame.onerror =
+                () => {
+
+                    if (
+                        !gameOpen ||
+                        thisLoadVersion !== gameLoadVersion
+                    ) {
+                        return;
+                    }
+
+                    clearTimeout(
+                        loadTimer
+                    );
+
+                    gameOverlay.classList.remove(
+                        "loading"
+                    );
+
+                    console.error(
+                        "Game failed to load:",
+                        currentGame
+                    );
+
+                };
 
 
             /*
@@ -887,31 +1227,54 @@
 
 
             /*
-             * Establish the viewport.
+             * Show the frame after the initial
+             * layout has been established.
              */
 
             requestAnimationFrame(
                 () => {
 
+                    if (!gameOpen) {
+                        return;
+                    }
+
                     forceLayout();
 
                     updateGameViewport();
 
-                    requestAnimationFrame(
-                        () => {
+                    gameFrame.style.visibility =
+                        "visible";
 
-                            forceLayout();
+                }
+            );
 
-                            updateGameViewport();
+
+            /*
+             * Fallback in case a browser does not
+             * fire the load event as expected.
+             */
+
+            loadTimer =
+                setTimeout(
+                    () => {
+
+                        if (
+                            gameOpen &&
+                            thisLoadVersion === gameLoadVersion
+                        ) {
+
+                            gameOverlay.classList.remove(
+                                "loading"
+                            );
 
                             gameFrame.style.visibility =
                                 "visible";
 
                         }
-                    );
 
-                }
-            );
+                    },
+                    10000
+                );
 
         }
 
@@ -930,6 +1293,10 @@
 
             gameOpen = false;
 
+            currentGame = "";
+
+            gameLoadVersion++;
+
 
             clearTimeout(
                 resizeTimer
@@ -939,10 +1306,18 @@
                 rotationTimer
             );
 
+            clearTimeout(
+                loadTimer
+            );
+
 
             /*
              * Stop the game.
              */
+
+            gameFrame.onload = null;
+
+            gameFrame.onerror = null;
 
             gameFrame.src =
                 "about:blank";
@@ -957,6 +1332,10 @@
 
             gameOverlay.style.display =
                 "none";
+
+            gameOverlay.classList.remove(
+                "loading"
+            );
 
             gameControls.style.display =
                 "none";
@@ -987,7 +1366,30 @@
             gameFrame.style.height =
                 "";
 
+            gameFrame.style.left =
+                "";
+
+            gameFrame.style.top =
+                "";
+
             gameFrame.style.visibility =
+                "";
+
+
+            /*
+             * Reset overlay dimensions.
+             */
+
+            gameOverlay.style.width =
+                "";
+
+            gameOverlay.style.height =
+                "";
+
+            gameOverlay.style.left =
+                "";
+
+            gameOverlay.style.top =
                 "";
 
 
@@ -1008,6 +1410,18 @@
             );
 
         }
+
+
+        /*
+         * ========================================================
+         * EXIT BUTTON
+         * ========================================================
+         */
+
+        exitButton.addEventListener(
+            "click",
+            closeGame
+        );
 
 
         /*
@@ -1044,6 +1458,52 @@
             },
             {
                 passive: true
+            }
+        );
+
+
+        /*
+         * ========================================================
+         * VISUAL VIEWPORT EVENTS
+         * ========================================================
+         */
+
+        if (window.visualViewport) {
+
+            window.visualViewport.addEventListener(
+                "resize",
+                () => {
+
+                    scheduleResize();
+
+                },
+                {
+                    passive: true
+                }
+            );
+
+        }
+
+
+        /*
+         * ========================================================
+         * PAGE VISIBILITY
+         * ========================================================
+         */
+
+        document.addEventListener(
+            "visibilitychange",
+            () => {
+
+                if (
+                    !document.hidden &&
+                    gameOpen
+                ) {
+
+                    scheduleResize();
+
+                }
+
             }
         );
 
