@@ -89,6 +89,16 @@
   "type": "Interactive",
   "controls": "Mouse or touch",
   "status": "available"
+},
+{
+  "id": "loops",
+  "name": "Loops",
+  "file": "loops.html",
+  "description": "Draw flowing lines, create loops, and watch them gently animate.",
+  "category": "Satisfying",
+  "type": "Interactive",
+  "controls": "Touch or mouse",
+  "status": "available"
 }
   ]
 }
