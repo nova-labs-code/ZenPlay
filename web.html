@@ -1,0 +1,555 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#090910">
+<title>Web — ZenPlay</title>
+
+<style>
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    height: 100dvh;
+    overflow: hidden;
+    background: #090910;
+    touch-action: none;
+    overscroll-behavior: none;
+}
+
+canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    touch-action: none;
+}
+</style>
+</head>
+
+<body>
+<canvas id="web"></canvas>
+
+<script>
+(() => {
+"use strict";
+
+const canvas = document.getElementById("web");
+const ctx = canvas.getContext("2d", {
+    alpha: false,
+    desynchronized: true
+});
+
+if (!ctx) return;
+
+let width = 0;
+let height = 0;
+let dpr = 1;
+
+let nodes = [];
+let edges = [];
+let pointers = new Map();
+
+let lastTime = 0;
+let frame = 0;
+
+const SPACING = 34;
+const CELL_SIZE = 125;
+
+const SPRING = 0.095;
+const DAMPING = 0.945;
+const RETURN_FORCE = 0.0009;
+
+const TOUCH_RADIUS = 125;
+
+const random = (min, max) =>
+    min + Math.random() * (max - min);
+
+const clamp = (value, min, max) =>
+    Math.max(min, Math.min(max, value));
+
+let spatialGrid = new Map();
+
+function gridKey(x, y) {
+    return Math.floor(x / CELL_SIZE) + "," +
+           Math.floor(y / CELL_SIZE);
+}
+
+function buildSpatialGrid() {
+    spatialGrid.clear();
+
+    for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        const key = gridKey(node.x, node.y);
+
+        let bucket = spatialGrid.get(key);
+
+        if (!bucket) {
+            bucket = [];
+            spatialGrid.set(key, bucket);
+        }
+
+        bucket.push(i);
+    }
+}
+
+function resize() {
+    const oldWidth = width;
+    const oldHeight = height;
+
+    width = Math.max(1, window.innerWidth);
+    height = Math.max(1, window.innerHeight);
+
+    dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    if (oldWidth && oldHeight && nodes.length) {
+        const sx = width / oldWidth;
+        const sy = height / oldHeight;
+
+        for (const node of nodes) {
+            node.x *= sx;
+            node.y *= sy;
+            node.homeX *= sx;
+            node.homeY *= sy;
+            node.vx *= sx;
+            node.vy *= sy;
+        }
+
+        buildSpatialGrid();
+    } else {
+        generateWeb();
+    }
+}
+
+function generateWeb() {
+    nodes = [];
+    edges = [];
+    spatialGrid.clear();
+
+    // Calculate rows and columns independently.
+    // This prevents the network from becoming square.
+    const cols = Math.max(3, Math.ceil(width / SPACING) + 1);
+    const rows = Math.max(3, Math.ceil(height / SPACING) + 1);
+
+    const cellW = width / (cols - 1);
+    const cellH = height / (rows - 1);
+
+    const grid = new Array(rows);
+
+    for (let y = 0; y < rows; y++) {
+        grid[y] = new Array(cols);
+
+        for (let x = 0; x < cols; x++) {
+            const homeX = x * cellW;
+            const homeY = y * cellH;
+
+            const px = clamp(
+                homeX + random(-cellW * 0.34, cellW * 0.34),
+                1,
+                width - 1
+            );
+
+            const py = clamp(
+                homeY + random(-cellH * 0.34, cellH * 0.34),
+                1,
+                height - 1
+            );
+
+            grid[y][x] = nodes.length;
+
+            nodes.push({
+                x: px,
+                y: py,
+
+                homeX: px,
+                homeY: py,
+
+                vx: 0,
+                vy: 0,
+
+                mass: random(0.85, 1.2),
+
+                hue: random(0, 360)
+            });
+        }
+    }
+
+    const connected = new Set();
+
+    function connect(aIndex, bIndex, extra = false) {
+        if (
+            aIndex === undefined ||
+            bIndex === undefined ||
+            aIndex < 0 ||
+            bIndex < 0 ||
+            aIndex === bIndex
+        ) return;
+
+        const key = Math.min(aIndex, bIndex) + ":" +
+                    Math.max(aIndex, bIndex);
+
+        if (connected.has(key)) return;
+
+        const a = nodes[aIndex];
+        const b = nodes[bIndex];
+
+        const distance = Math.hypot(
+            b.x - a.x,
+            b.y - a.y
+        );
+
+        if (distance < 1) return;
+
+        connected.add(key);
+
+        edges.push({
+            a: aIndex,
+            b: bIndex,
+            length: distance,
+            hue: random(0, 360),
+            thickness: random(0.5, 1.05),
+            extra
+        });
+    }
+
+    for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+            const id = grid[y][x];
+
+            // Basic connected network.
+            connect(id, grid[y]?.[x + 1]);
+            connect(id, grid[y + 1]?.[x]);
+
+            // Irregular diagonals.
+            if (Math.random() < 0.82) {
+                connect(id, grid[y + 1]?.[x + 1]);
+            }
+
+            if (Math.random() < 0.72) {
+                connect(id, grid[y + 1]?.[x - 1]);
+            }
+
+            // Occasional longer strands.
+            if (Math.random() < 0.09) {
+                connect(id, grid[y]?.[x + 2], true);
+            }
+
+            if (Math.random() < 0.07) {
+                connect(id, grid[y + 2]?.[x], true);
+            }
+        }
+    }
+
+    buildSpatialGrid();
+}
+
+function applyPointerForces() {
+    for (const pointer of pointers.values()) {
+        const minX = Math.floor(
+            (pointer.x - TOUCH_RADIUS) / CELL_SIZE
+        );
+
+        const maxX = Math.floor(
+            (pointer.x + TOUCH_RADIUS) / CELL_SIZE
+        );
+
+        const minY = Math.floor(
+            (pointer.y - TOUCH_RADIUS) / CELL_SIZE
+        );
+
+        const maxY = Math.floor(
+            (pointer.y + TOUCH_RADIUS) / CELL_SIZE
+        );
+
+        for (let gy = minY; gy <= maxY; gy++) {
+            for (let gx = minX; gx <= maxX; gx++) {
+                const bucket = spatialGrid.get(gx + "," + gy);
+                if (!bucket) continue;
+
+                for (const index of bucket) {
+                    const node = nodes[index];
+
+                    const dx = pointer.x - node.x;
+                    const dy = pointer.y - node.y;
+
+                    const distanceSquared = dx * dx + dy * dy;
+
+                    if (distanceSquared > TOUCH_RADIUS * TOUCH_RADIUS) {
+                        continue;
+                    }
+
+                    const distance = Math.sqrt(distanceSquared);
+
+                    const falloff = Math.pow(
+                        1 - distance / TOUCH_RADIUS,
+                        1.6
+                    );
+
+                    const force = pointer.strength * falloff;
+
+                    // Pull points toward the finger.
+                    node.vx += dx * force * 0.018;
+                    node.vy += dy * force * 0.018;
+
+                    // Movement travels into the network.
+                    node.vx += pointer.vx * force * 0.075;
+                    node.vy += pointer.vy * force * 0.075;
+                }
+            }
+        }
+    }
+}
+
+function update(dt) {
+    const step = Math.min(dt / 16.667, 1.7);
+
+    applyPointerForces();
+
+    // One spring pass keeps the network responsive
+    // without repeatedly processing every connection.
+    for (const edge of edges) {
+        const a = nodes[edge.a];
+        const b = nodes[edge.b];
+
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+
+        const distance = Math.hypot(dx, dy);
+
+        if (distance < 0.001) continue;
+
+        const stretch = (distance - edge.length) / distance;
+        const force = stretch * SPRING;
+
+        const fx = dx * force;
+        const fy = dy * force;
+
+        a.vx += fx * 0.5 / a.mass;
+        a.vy += fy * 0.5 / a.mass;
+
+        b.vx -= fx * 0.5 / b.mass;
+        b.vy -= fy * 0.5 / b.mass;
+    }
+
+    const damping = Math.pow(DAMPING, step);
+
+    for (const node of nodes) {
+        node.vx += (node.homeX - node.x) * RETURN_FORCE;
+        node.vy += (node.homeY - node.y) * RETURN_FORCE;
+
+        node.vx *= damping;
+        node.vy *= damping;
+
+        node.x += node.vx * step;
+        node.y += node.vy * step;
+
+        if (node.x < 1) {
+            node.x = 1;
+            node.vx *= -0.45;
+        }
+
+        if (node.x > width - 1) {
+            node.x = width - 1;
+            node.vx *= -0.45;
+        }
+
+        if (node.y < 1) {
+            node.y = 1;
+            node.vy *= -0.45;
+        }
+
+        if (node.y > height - 1) {
+            node.y = height - 1;
+            node.vy *= -0.45;
+        }
+    }
+
+    // Rebuild the spatial grid after movement.
+    buildSpatialGrid();
+
+    for (const pointer of pointers.values()) {
+        pointer.vx *= 0.72;
+        pointer.vy *= 0.72;
+        pointer.strength *= 0.985;
+    }
+}
+
+function drawBackground() {
+    ctx.fillStyle = "#090910";
+    ctx.fillRect(0, 0, width, height);
+
+    const gradient = ctx.createRadialGradient(
+        width * 0.5,
+        height * 0.45,
+        0,
+        width * 0.5,
+        height * 0.45,
+        Math.max(width, height) * 0.75
+    );
+
+    gradient.addColorStop(0, "rgba(47, 27, 75, 0.14)");
+    gradient.addColorStop(1, "rgba(9, 9, 16, 0)");
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+}
+
+function draw() {
+    drawBackground();
+
+    ctx.lineCap = "round";
+
+    // Fine strings with individual colors.
+    ctx.globalAlpha = 0.88;
+    ctx.lineWidth = 0.8;
+
+    for (const edge of edges) {
+        const a = nodes[edge.a];
+        const b = nodes[edge.b];
+
+        const speed = Math.min(
+            1,
+            (Math.abs(a.vx) + Math.abs(a.vy) +
+             Math.abs(b.vx) + Math.abs(b.vy)) * 0.035
+        );
+
+        const hue = (edge.hue + speed * 45) % 360;
+
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+
+        ctx.strokeStyle =
+            `hsla(${hue}, 82%, ${67 + speed * 10}%, 0.82)`;
+
+        ctx.lineWidth = edge.thickness;
+        ctx.stroke();
+    }
+
+    // Glow only where the network is moving.
+    ctx.globalCompositeOperation = "lighter";
+
+    for (const node of nodes) {
+        const speed = Math.hypot(node.vx, node.vy);
+
+        if (speed < 1.4) continue;
+
+        const alpha = Math.min(0.42, speed * 0.025);
+
+        ctx.beginPath();
+        ctx.arc(
+            node.x,
+            node.y,
+            1.1,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fillStyle =
+            `hsla(${node.hue}, 95%, 76%, ${alpha})`;
+
+        ctx.fill();
+    }
+
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+}
+
+function animate(time) {
+    const dt = lastTime
+        ? Math.min(time - lastTime, 32)
+        : 16.667;
+
+    lastTime = time;
+
+    update(dt);
+    draw();
+
+    frame = requestAnimationFrame(animate);
+}
+
+// Pointer interaction.
+function pointerDown(event) {
+    event.preventDefault();
+
+    pointers.set(event.pointerId, {
+        x: event.clientX,
+        y: event.clientY,
+        vx: 0,
+        vy: 0,
+        strength: 1
+    });
+
+    try {
+        canvas.setPointerCapture(event.pointerId);
+    } catch (_) {}
+}
+
+function pointerMove(event) {
+    const pointer = pointers.get(event.pointerId);
+    if (!pointer) return;
+
+    const x = event.clientX;
+    const y = event.clientY;
+
+    pointer.vx = clamp(x - pointer.x, -35, 35);
+    pointer.vy = clamp(y - pointer.y, -35, 35);
+
+    pointer.x = x;
+    pointer.y = y;
+    pointer.strength = 1;
+}
+
+function pointerUp(event) {
+    pointers.delete(event.pointerId);
+}
+
+canvas.addEventListener("pointerdown", pointerDown, {
+    passive: false
+});
+
+canvas.addEventListener("pointermove", pointerMove, {
+    passive: false
+});
+
+canvas.addEventListener("pointerup", pointerUp);
+canvas.addEventListener("pointercancel", pointerUp);
+canvas.addEventListener("lostpointercapture", pointerUp);
+
+window.addEventListener("resize", resize);
+
+window.addEventListener("orientationchange", () => {
+    setTimeout(resize, 180);
+});
+
+document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+        lastTime = 0;
+    }
+});
+
+resize();
+frame = requestAnimationFrame(animate);
+
+})();
+</script>
+
+<script src="./watermark.js" defer></script>
+</body>
+</html>
