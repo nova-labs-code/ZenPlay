@@ -60,12 +60,14 @@ let dpr = 1;
 let nodes = [];
 let edges = [];
 let pointers = new Map();
+let spatialGrid = new Map();
 
 let lastTime = 0;
 let frame = 0;
 
 const SPACING = 34;
 const CELL_SIZE = 125;
+const EXTRA = 45;
 
 const SPRING = 0.095;
 const DAMPING = 0.945;
@@ -78,8 +80,6 @@ const random = (min, max) =>
 
 const clamp = (value, min, max) =>
     Math.max(min, Math.min(max, value));
-
-let spatialGrid = new Map();
 
 function gridKey(x, y) {
     return Math.floor(x / CELL_SIZE) + "," +
@@ -105,9 +105,6 @@ function buildSpatialGrid() {
 }
 
 function resize() {
-    const oldWidth = width;
-    const oldHeight = height;
-
     width = Math.max(1, window.innerWidth);
     height = Math.max(1, window.innerHeight);
 
@@ -118,23 +115,8 @@ function resize() {
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    if (oldWidth && oldHeight && nodes.length) {
-        const sx = width / oldWidth;
-        const sy = height / oldHeight;
-
-        for (const node of nodes) {
-            node.x *= sx;
-            node.y *= sy;
-            node.homeX *= sx;
-            node.homeY *= sy;
-            node.vx *= sx;
-            node.vy *= sy;
-        }
-
-        buildSpatialGrid();
-    } else {
-        generateWeb();
-    }
+    // Rebuild to match the new viewport dimensions.
+    generateWeb();
 }
 
 function generateWeb() {
@@ -142,13 +124,19 @@ function generateWeb() {
     edges = [];
     spatialGrid.clear();
 
-    // Calculate rows and columns independently.
-    // This prevents the network from becoming square.
-    const cols = Math.max(3, Math.ceil(width / SPACING) + 1);
-    const rows = Math.max(3, Math.ceil(height / SPACING) + 1);
+    // Include 15px beyond every viewport edge.
+    const cols = Math.max(
+        3,
+        Math.ceil((width + EXTRA * 2) / SPACING) + 1
+    );
 
-    const cellW = width / (cols - 1);
-    const cellH = height / (rows - 1);
+    const rows = Math.max(
+        3,
+        Math.ceil((height + EXTRA * 2) / SPACING) + 1
+    );
+
+    const cellW = (width + EXTRA * 2) / (cols - 1);
+    const cellH = (height + EXTRA * 2) / (rows - 1);
 
     const grid = new Array(rows);
 
@@ -156,19 +144,17 @@ function generateWeb() {
         grid[y] = new Array(cols);
 
         for (let x = 0; x < cols; x++) {
-            const homeX = x * cellW;
-            const homeY = y * cellH;
+            const homeX = x * cellW - EXTRA;
+            const homeY = y * cellH - EXTRA;
 
-            const px = clamp(
-                homeX + random(-cellW * 0.34, cellW * 0.34),
-                1,
-                width - 1
+            const px = homeX + random(
+                -cellW * 0.34,
+                cellW * 0.34
             );
 
-            const py = clamp(
-                homeY + random(-cellH * 0.34, cellH * 0.34),
-                1,
-                height - 1
+            const py = homeY + random(
+                -cellH * 0.34,
+                cellH * 0.34
             );
 
             grid[y][x] = nodes.length;
@@ -184,7 +170,6 @@ function generateWeb() {
                 vy: 0,
 
                 mass: random(0.85, 1.2),
-
                 hue: random(0, 360)
             });
         }
@@ -232,11 +217,11 @@ function generateWeb() {
         for (let x = 0; x < cols; x++) {
             const id = grid[y][x];
 
-            // Basic connected network.
+            // Guaranteed horizontal and vertical connections.
             connect(id, grid[y]?.[x + 1]);
             connect(id, grid[y + 1]?.[x]);
 
-            // Irregular diagonals.
+            // Irregular diagonal connections.
             if (Math.random() < 0.82) {
                 connect(id, grid[y + 1]?.[x + 1]);
             }
@@ -290,9 +275,10 @@ function applyPointerForces() {
 
                     const distanceSquared = dx * dx + dy * dy;
 
-                    if (distanceSquared > TOUCH_RADIUS * TOUCH_RADIUS) {
-                        continue;
-                    }
+                    if (
+                        distanceSquared >
+                        TOUCH_RADIUS * TOUCH_RADIUS
+                    ) continue;
 
                     const distance = Math.sqrt(distanceSquared);
 
@@ -303,11 +289,10 @@ function applyPointerForces() {
 
                     const force = pointer.strength * falloff;
 
-                    // Pull points toward the finger.
                     node.vx += dx * force * 0.018;
                     node.vy += dy * force * 0.018;
 
-                    // Movement travels into the network.
+                    // Transfer finger movement through the web.
                     node.vx += pointer.vx * force * 0.075;
                     node.vy += pointer.vy * force * 0.075;
                 }
@@ -321,8 +306,7 @@ function update(dt) {
 
     applyPointerForces();
 
-    // One spring pass keeps the network responsive
-    // without repeatedly processing every connection.
+    // Spring physics.
     for (const edge of edges) {
         const a = nodes[edge.a];
         const b = nodes[edge.b];
@@ -350,6 +334,7 @@ function update(dt) {
     const damping = Math.pow(DAMPING, step);
 
     for (const node of nodes) {
+        // Gentle return toward the original position.
         node.vx += (node.homeX - node.x) * RETURN_FORCE;
         node.vy += (node.homeY - node.y) * RETURN_FORCE;
 
@@ -359,28 +344,28 @@ function update(dt) {
         node.x += node.vx * step;
         node.y += node.vy * step;
 
-        if (node.x < 1) {
-            node.x = 1;
+        // Keep the network inside its overscan boundary.
+        if (node.x < -EXTRA - 40) {
+            node.x = -EXTRA - 40;
             node.vx *= -0.45;
         }
 
-        if (node.x > width - 1) {
-            node.x = width - 1;
+        if (node.x > width + EXTRA + 40) {
+            node.x = width + EXTRA + 40;
             node.vx *= -0.45;
         }
 
-        if (node.y < 1) {
-            node.y = 1;
+        if (node.y < -EXTRA - 40) {
+            node.y = -EXTRA - 40;
             node.vy *= -0.45;
         }
 
-        if (node.y > height - 1) {
-            node.y = height - 1;
+        if (node.y > height + EXTRA + 40) {
+            node.y = height + EXTRA + 40;
             node.vy *= -0.45;
         }
     }
 
-    // Rebuild the spatial grid after movement.
     buildSpatialGrid();
 
     for (const pointer of pointers.values()) {
@@ -414,10 +399,7 @@ function draw() {
     drawBackground();
 
     ctx.lineCap = "round";
-
-    // Fine strings with individual colors.
     ctx.globalAlpha = 0.88;
-    ctx.lineWidth = 0.8;
 
     for (const edge of edges) {
         const a = nodes[edge.a];
@@ -425,8 +407,12 @@ function draw() {
 
         const speed = Math.min(
             1,
-            (Math.abs(a.vx) + Math.abs(a.vy) +
-             Math.abs(b.vx) + Math.abs(b.vy)) * 0.035
+            (
+                Math.abs(a.vx) +
+                Math.abs(a.vy) +
+                Math.abs(b.vx) +
+                Math.abs(b.vy)
+            ) * 0.035
         );
 
         const hue = (edge.hue + speed * 45) % 360;
@@ -442,7 +428,7 @@ function draw() {
         ctx.stroke();
     }
 
-    // Glow only where the network is moving.
+    // Subtle moving-point highlights.
     ctx.globalCompositeOperation = "lighter";
 
     for (const node of nodes) {
@@ -453,13 +439,7 @@ function draw() {
         const alpha = Math.min(0.42, speed * 0.025);
 
         ctx.beginPath();
-        ctx.arc(
-            node.x,
-            node.y,
-            1.1,
-            0,
-            Math.PI * 2
-        );
+        ctx.arc(node.x, node.y, 1.1, 0, Math.PI * 2);
 
         ctx.fillStyle =
             `hsla(${node.hue}, 95%, 76%, ${alpha})`;
@@ -484,7 +464,7 @@ function animate(time) {
     frame = requestAnimationFrame(animate);
 }
 
-// Pointer interaction.
+// Touch and pointer interaction.
 function pointerDown(event) {
     event.preventDefault();
 
