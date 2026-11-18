@@ -99,6 +99,16 @@
   "type": "Interactive",
   "controls": "Touch or mouse",
   "status": "available"
+},
+{
+  "id": "web",
+  "name": "Web",
+  "file": "web.html",
+  "description": "Explore a colorful network of interconnected strings. Touch and drag to make the entire web move and ripple.",
+  "category": "Satisfying",
+  "type": "Interactive",
+  "controls": "Touch or drag",
+  "status": "available"
 }
   ]
 }
