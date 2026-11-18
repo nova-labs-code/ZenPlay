@@ -3,12 +3,14 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#101014">
-<title>Loops — ZenPlay</title>
+<title>Loops</title>
 
 <style>
 * {
+    margin: 0;
+    padding: 0;
     box-sizing: border-box;
     -webkit-tap-highlight-color: transparent;
 }
@@ -16,22 +18,20 @@
 html, body {
     width: 100%;
     height: 100%;
-    height: 100dvh;
-    margin: 0;
     overflow: hidden;
+    position: fixed;
+    inset: 0;
     background: #101014;
     touch-action: none;
     overscroll-behavior: none;
-    user-select: none;
-    -webkit-user-select: none;
 }
 
-#canvas {
+canvas {
     position: fixed;
     inset: 0;
+    display: block;
     width: 100%;
     height: 100%;
-    display: block;
     touch-action: none;
 }
 </style>
@@ -45,434 +45,571 @@ html, body {
 
 <script>
 (() => {
-    "use strict";
+"use strict";
 
-    const canvas = document.getElementById("canvas");
-    const ctx = canvas.getContext("2d", { alpha: false });
+const canvas = document.getElementById("canvas");
 
-    let width = 0;
-    let height = 0;
-    let dpr = 1;
+const ctx = canvas.getContext("2d", {
+    alpha: false,
+    desynchronized: true
+});
 
-    let strings = [];
-    let currentString = null;
-    let drawing = false;
-    let activePointer = null;
+let width = 0;
+let height = 0;
+let dpr = 1;
 
-    let lastTime = 0;
-    let elapsed = 0;
-    let animationId = null;
+const strings = [];
 
-    const MAX_STRINGS = 35;
-    const MAX_POINTS = 5000;
+let currentString = null;
+let activePointer = null;
 
-    function resize() {
-        dpr = Math.min(window.devicePixelRatio || 1, 2);
+const SETTINGS = {
+    pointSpacing: 7,
+    maxPoints: 850,
+    maxStrings: 24,
 
-        width = window.innerWidth;
-        height = window.innerHeight;
+    physicsPasses: 2,
+    constraintLength: 7,
 
-        canvas.width = Math.round(width * dpr);
-        canvas.height = Math.round(height * dpr);
+    dragDamping: 0.985,
+    releasedDamping: 0.996,
 
-        canvas.style.width = width + "px";
-        canvas.style.height = height + "px";
+    lineWidth: 2.3,
 
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    }
+    colorSpeed: 28
+};
 
-    function distance(a, b) {
-        return Math.hypot(b.x - a.x, b.y - a.y);
-    }
+let previousTime = performance.now();
+let elapsed = 0;
 
-    function clamp(value, min, max) {
-        return Math.max(min, Math.min(max, value));
-    }
+function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 1.75);
 
-    function getPosition(event) {
-        const rect = canvas.getBoundingClientRect();
+    width = window.innerWidth;
+    height = window.innerHeight;
 
-        return {
-            x: event.clientX - rect.left,
-            y: event.clientY - rect.top
-        };
-    }
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
 
-    function createString(point) {
-        return {
-            points: [{
-                x: point.x,
-                y: point.y,
-                oldX: point.x,
-                oldY: point.y
-            }],
+    canvas.style.width = width + "px";
+    canvas.style.height = height + "px";
 
-            hue: Math.random() * 360,
-            phase: Math.random() * Math.PI * 2,
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
 
-            age: 0,
-            lifetime: 9 + Math.random() * 4,
+window.addEventListener("resize", resize);
+window.addEventListener("orientationchange", resize);
 
-            released: false,
+resize();
 
-            driftX: 0,
-            driftY: 0,
+function createPoint(x, y) {
+    return {
+        x,
+        y,
+        px: x,
+        py: y
+    };
+}
 
-            waveSpeed: 1 + Math.random() * 0.6,
-            waveAmount: 3 + Math.random() * 4,
+function createString(x, y) {
+    return {
+        points: [createPoint(x, y)],
 
-            segmentLength: 5,
-            thickness: 1.1 + Math.random() * 0.5
-        };
-    }
+        released: false,
 
-    function beginDrawing(event) {
-        if (event.button !== undefined && event.button !== 0) return;
-        if (activePointer !== null) return;
+        inputX: x,
+        inputY: y,
 
-        event.preventDefault();
+        hue: Math.random() * 360,
 
-        activePointer = event.pointerId;
-        drawing = true;
+        phase: Math.random() * Math.PI * 2,
 
-        try {
-            canvas.setPointerCapture(event.pointerId);
-        } catch (_) {}
+        waveSpeed: 2 + Math.random() * 1.5,
 
-        currentString = createString(getPosition(event));
-    }
+        waveStrength: 7 + Math.random() * 3,
 
-    function addPoint(point) {
-        if (!currentString) return;
+        driftX: 0,
+        driftY: 0,
 
-        const points = currentString.points;
-        const previous = points[points.length - 1];
+        driftPhase: Math.random() * Math.PI * 2,
 
-        const d = distance(previous, point);
+        age: 0
+    };
+}
 
-        if (d < 2) return;
+/*
+ * Add smoothly spaced points along the finger's movement.
+ */
+function addPoint(s, x, y) {
+    const points = s.points;
+    const last = points[points.length - 1];
 
-        const steps = Math.max(1, Math.ceil(d / 4));
+    const dx = x - last.x;
+    const dy = y - last.y;
 
-        for (let i = 1; i <= steps; i++) {
-            const t = i / steps;
+    const distance = Math.hypot(dx, dy);
 
-            const x = previous.x + (point.x - previous.x) * t;
-            const y = previous.y + (point.y - previous.y) * t;
+    s.inputX = x;
+    s.inputY = y;
 
-            points.push({
-                x,
-                y,
-                oldX: x,
-                oldY: y
-            });
-        }
+    if (distance < SETTINGS.pointSpacing) return;
 
-        if (points.length > MAX_POINTS) {
-            points.splice(0, points.length - MAX_POINTS);
-        }
-    }
+    const available = SETTINGS.maxPoints - points.length;
 
-    function releaseString(string) {
-        const points = string.points;
+    if (available <= 0) return;
 
-        if (points.length < 2) {
-            string.driftX = (Math.random() - 0.5) * 18;
-            string.driftY = (Math.random() - 0.5) * 18;
-        } else {
-            const first = points[Math.max(0, points.length - 8)];
-            const last = points[points.length - 1];
+    const count = Math.min(
+        Math.floor(distance / SETTINGS.pointSpacing),
+        available
+    );
 
-            const dx = last.x - first.x;
-            const dy = last.y - first.y;
-            const length = Math.hypot(dx, dy) || 1;
+    if (count <= 0) return;
 
-            string.driftX = dx / length * 20;
-            string.driftY = dy / length * 20;
-        }
+    for (let i = 1; i <= count; i++) {
+        const t = i / count;
 
-        string.released = true;
-    }
-
-    function finishDrawing(event) {
-        if (event.pointerId !== activePointer) return;
-
-        if (currentString) {
-            releaseString(currentString);
-
-            if (currentString.points.length > 1) {
-                strings.push(currentString);
-
-                if (strings.length > MAX_STRINGS) {
-                    strings.shift();
-                }
-            }
-
-            currentString = null;
-        }
-
-        drawing = false;
-        activePointer = null;
-    }
-
-    function constrainString(string) {
-        const points = string.points;
-
-        // Keep neighboring points connected like a flexible thread.
-        for (let pass = 0; pass < 4; pass++) {
-            for (let i = 1; i < points.length; i++) {
-                const a = points[i - 1];
-                const b = points[i];
-
-                const dx = b.x - a.x;
-                const dy = b.y - a.y;
-
-                const length = Math.hypot(dx, dy) || 0.001;
-                const difference = (length - string.segmentLength) / length;
-
-                const correctionX = dx * difference * 0.5;
-                const correctionY = dy * difference * 0.5;
-
-                if (i > 1) {
-                    a.x += correctionX;
-                    a.y += correctionY;
-                }
-
-                b.x -= correctionX;
-                b.y -= correctionY;
-            }
-        }
-    }
-
-    function updateString(string, dt) {
-        if (!string.released) return;
-
-        string.age += dt;
-
-        const points = string.points;
-        const t = string.age;
-        const phase = string.phase;
-
-        string.driftX += Math.sin(t * 0.55 + phase) * 3 * dt;
-        string.driftY += Math.cos(t * 0.48 + phase) * 3 * dt;
-
-        const damping = Math.pow(0.994, dt * 60);
-
-        string.driftX *= damping;
-        string.driftY *= damping;
-
-        const speed = Math.hypot(string.driftX, string.driftY);
-
-        if (speed > 55) {
-            string.driftX = string.driftX / speed * 55;
-            string.driftY = string.driftY / speed * 55;
-        }
-
-        const moveX = string.driftX * dt;
-        const moveY = string.driftY * dt;
-
-        for (let i = 0; i < points.length; i++) {
-            const p = points[i];
-
-            const oldX = p.x;
-            const oldY = p.y;
-
-            const position = i / Math.max(1, points.length - 1);
-
-            // Each section follows the previous section with a slight delay.
-            const follow = 0.45 + position * 0.55;
-
-            const velocityX = (p.x - p.oldX) * 0.97;
-            const velocityY = (p.y - p.oldY) * 0.97;
-
-            const wave = Math.sin(
-                t * string.waveSpeed +
-                i * 0.11 +
-                phase
-            );
-
-            const wave2 = Math.cos(
-                t * string.waveSpeed * 0.75 +
-                i * 0.085 +
-                phase
-            );
-
-            const waveForce = string.waveAmount * (0.6 + t * 0.07);
-
-            p.x += velocityX + moveX * follow +
-                wave * waveForce * dt;
-
-            p.y += velocityY + moveY * follow +
-                wave2 * waveForce * dt;
-
-            p.oldX = oldX;
-            p.oldY = oldY;
-        }
-
-        // Keep the string flexible but connected.
-        constrainString(string);
-    }
-
-    function getAlpha(string) {
-        if (!string.released) return 1;
-
-        const fadeStart = string.lifetime * 0.5;
-        const fadeLength = string.lifetime - fadeStart;
-
-        if (string.age <= fadeStart) return 1;
-
-        return clamp(
-            1 - (string.age - fadeStart) / fadeLength,
-            0,
-            1
+        points.push(
+            createPoint(
+                last.x + dx * t,
+                last.y + dy * t
+            )
         );
     }
+}
 
-    function drawString(string, time) {
-        const points = string.points;
+/*
+ * String physics.
+ */
+function updateString(s, dt) {
+    const points = s.points;
+    const count = points.length;
 
-        if (points.length < 2) return;
+    if (count < 2) return;
 
-        const alpha = getAlpha(string);
+    const step = Math.min(dt, 0.033);
 
-        if (alpha <= 0) return;
-
-        ctx.save();
-        ctx.globalAlpha = alpha;
-
-        // Draw each small section with its own rainbow color.
-        for (let i = 1; i < points.length; i++) {
-            const a = points[i - 1];
-            const b = points[i];
-
-            const hue = (
-                string.hue +
-                i * 2.2 +
-                time * 22
-            ) % 360;
-
-            ctx.beginPath();
-            ctx.moveTo(a.x, a.y);
-            ctx.lineTo(b.x, b.y);
-
-            ctx.strokeStyle = `hsl(${hue}, 95%, 69%)`;
-            ctx.lineWidth = string.thickness;
-            ctx.lineCap = "round";
-
-            ctx.stroke();
-        }
-
-        // A very subtle light around the thread.
-        ctx.globalAlpha = alpha * 0.16;
-        ctx.shadowColor = `hsl(${(string.hue + time * 22) % 360}, 95%, 65%)`;
-        ctx.shadowBlur = 5;
-
-        ctx.beginPath();
-        ctx.moveTo(points[0].x, points[0].y);
-
-        for (let i = 1; i < points.length; i++) {
-            ctx.lineTo(points[i].x, points[i].y);
-        }
-
-        ctx.strokeStyle = "white";
-        ctx.lineWidth = 2.8;
-        ctx.stroke();
-
-        ctx.restore();
+    if (s.released) {
+        s.age += step;
+        s.driftPhase += step * 0.8;
     }
 
-    function update(dt) {
-        for (const string of strings) {
-            updateString(string, dt);
+    const damping = s.released
+        ? SETTINGS.releasedDamping
+        : SETTINGS.dragDamping;
+
+    /*
+     * Verlet movement with a stronger natural wave.
+     */
+    for (let i = 0; i < count; i++) {
+        const p = points[i];
+
+        if (!s.released && i === count - 1) {
+            p.x = s.inputX;
+            p.y = s.inputY;
+            p.px = s.inputX;
+            p.py = s.inputY;
+            continue;
         }
 
-        strings = strings.filter(string => {
-            if (getAlpha(string) <= 0.01) return false;
+        const vx = (p.x - p.px) * damping;
+        const vy = (p.y - p.py) * damping;
 
-            return string.points.some(p =>
-                p.x > -120 &&
-                p.x < width + 120 &&
-                p.y > -120 &&
-                p.y < height + 120
+        const oldX = p.x;
+        const oldY = p.y;
+
+        const progress = i / Math.max(1, count - 1);
+
+        const wave =
+            elapsed * s.waveSpeed +
+            i * 0.11 +
+            s.phase;
+
+        /*
+         * A traveling wave makes the string bend
+         * rather than just wobble in place.
+         */
+        const waveStrength = s.released
+            ? s.waveStrength * 0.5
+            : s.waveStrength;
+
+        const waveX =
+            Math.sin(wave) * waveStrength;
+
+        const waveY =
+            Math.cos(wave * 0.75) * waveStrength;
+
+        /*
+         * Released strings drift slowly.
+         */
+        const driftX = s.released ? s.driftX : 0;
+        const driftY = s.released ? s.driftY : 0;
+
+        p.x = oldX + vx + waveX * step + driftX * step;
+        p.y = oldY + vy + waveY * step + driftY * step;
+
+        p.px = oldX;
+        p.py = oldY;
+    }
+
+    /*
+     * Keep the drawing endpoint attached to the finger.
+     */
+    if (!s.released) {
+        const last = points[count - 1];
+
+        last.x = s.inputX;
+        last.y = s.inputY;
+
+        last.px = s.inputX;
+        last.py = s.inputY;
+    }
+
+    /*
+     * Preserve the flexible string shape.
+     */
+    for (let pass = 0; pass < SETTINGS.physicsPasses; pass++) {
+        for (let i = 0; i < count - 1; i++) {
+            const a = points[i];
+            const b = points[i + 1];
+
+            const dx = b.x - a.x;
+            const dy = b.y - a.y;
+
+            const distance = Math.hypot(dx, dy) || 0.001;
+
+            const difference =
+                (distance - SETTINGS.constraintLength) / distance;
+
+            const offsetX = dx * difference * 0.5;
+            const offsetY = dy * difference * 0.5;
+
+            const anchored =
+                !s.released && i === count - 2;
+
+            if (anchored) {
+                a.x += offsetX * 2;
+                a.y += offsetY * 2;
+            } else {
+                a.x += offsetX;
+                a.y += offsetY;
+
+                b.x -= offsetX;
+                b.y -= offsetY;
+            }
+        }
+
+        if (!s.released) {
+            const last = points[count - 1];
+
+            last.x = s.inputX;
+            last.y = s.inputY;
+        }
+    }
+}
+
+/*
+ * Draw the string using ONE solid color.
+ * The entire string changes hue together.
+ */
+function drawString(s) {
+    const points = s.points;
+
+    if (points.length < 2) return;
+
+    const count = points.length;
+
+    const hue = (
+        s.hue + elapsed * SETTINGS.colorSpeed
+    ) % 360;
+
+    const color = `hsl(${hue}, 95%, 66%)`;
+
+    ctx.save();
+
+    ctx.beginPath();
+
+    /*
+     * Add visible lateral movement to the shape.
+     * The movement tapers toward the active endpoint
+     * so it stays attached to the finger.
+     */
+    for (let i = 0; i < count; i++) {
+        const p = points[i];
+
+        const previous = points[Math.max(0, i - 1)];
+        const next = points[Math.min(count - 1, i + 1)];
+
+        const tangentX = next.x - previous.x;
+        const tangentY = next.y - previous.y;
+
+        const length = Math.hypot(tangentX, tangentY) || 1;
+
+        const normalX = -tangentY / length;
+        const normalY = tangentX / length;
+
+        const wave =
+            Math.sin(
+                elapsed * 2.8 +
+                i * 0.13 +
+                s.phase
             );
-        });
-    }
 
-    function render() {
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        let amount = s.released ? 3.5 : 6.5;
 
-        ctx.fillStyle = "#101014";
-        ctx.fillRect(0, 0, width, height);
+        /*
+         * More visible movement in the middle of the string.
+         */
+        const middleFactor = Math.sin(
+            Math.PI * (i / Math.max(1, count - 1))
+        );
 
-        for (const string of strings) {
-            drawString(string, elapsed);
+        amount *= 0.45 + middleFactor * 0.65;
+
+        /*
+         * Keep the active endpoint visually anchored.
+         */
+        if (!s.released) {
+            const endFactor = Math.min(
+                1,
+                (count - 1 - i) / 5
+            );
+
+            amount *= endFactor;
         }
 
-        if (currentString) {
-            drawString(currentString, elapsed);
-        }
-    }
+        const x = p.x + normalX * wave * amount;
+        const y = p.y + normalY * wave * amount;
 
-    function animate(timestamp) {
-        if (!lastTime) lastTime = timestamp;
-
-        const dt = Math.min((timestamp - lastTime) / 1000, 0.035);
-
-        lastTime = timestamp;
-        elapsed += dt;
-
-        update(dt);
-        render();
-
-        animationId = requestAnimationFrame(animate);
-    }
-
-    function startAnimation() {
-        if (animationId !== null) return;
-
-        lastTime = 0;
-        animationId = requestAnimationFrame(animate);
-    }
-
-    function stopAnimation() {
-        if (animationId !== null) {
-            cancelAnimationFrame(animationId);
-            animationId = null;
-        }
-    }
-
-    canvas.addEventListener("pointerdown", beginDrawing);
-    canvas.addEventListener("pointermove", event => {
-        if (!drawing || event.pointerId !== activePointer) return;
-
-        event.preventDefault();
-        addPoint(getPosition(event));
-    });
-
-    canvas.addEventListener("pointerup", finishDrawing);
-    canvas.addEventListener("pointercancel", finishDrawing);
-    canvas.addEventListener("lostpointercapture", finishDrawing);
-
-    window.addEventListener("resize", resize);
-
-    window.addEventListener("orientationchange", () => {
-        setTimeout(resize, 150);
-    });
-
-    if (window.visualViewport) {
-        window.visualViewport.addEventListener("resize", resize);
-    }
-
-    document.addEventListener("visibilitychange", () => {
-        if (document.hidden) {
-            stopAnimation();
+        if (i === 0) {
+            ctx.moveTo(x, y);
         } else {
-            startAnimation();
+            ctx.lineTo(x, y);
         }
-    });
+    }
 
-    resize();
-    startAnimation();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = SETTINGS.lineWidth;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    /*
+     * Soft glow.
+     */
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 5;
+
+    ctx.stroke();
+
+    /*
+     * Small highlight.
+     */
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = "rgba(255,255,255,0.24)";
+    ctx.lineWidth = 0.65;
+
+    ctx.stroke();
+
+    ctx.restore();
+}
+
+/*
+ * Release the string into a slow, natural drift.
+ */
+function releaseString(s) {
+    if (!s || s.released) return;
+
+    s.released = true;
+
+    const points = s.points;
+
+    const first = points[0];
+    const last = points[points.length - 1];
+
+    const centerX = (first.x + last.x) * 0.5;
+    const centerY = (first.y + last.y) * 0.5;
+
+    let dx = centerX - width * 0.5;
+    let dy = centerY - height * 0.5;
+
+    const length = Math.hypot(dx, dy);
+
+    if (length > 0.01) {
+        dx /= length;
+        dy /= length;
+    } else {
+        const angle = Math.random() * Math.PI * 2;
+
+        dx = Math.cos(angle);
+        dy = Math.sin(angle);
+    }
+
+    /*
+     * Slightly randomize the direction.
+     */
+    const angle = (Math.random() - 0.5) * 0.65;
+
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+
+    const directionX = dx * cos - dy * sin;
+    const directionY = dx * sin + dy * cos;
+
+    /*
+     * Slower drift: gentle movement instead of
+     * immediately shooting away.
+     */
+    const speed = 7 + Math.random() * 6;
+
+    s.driftX = directionX * speed;
+    s.driftY = directionY * speed;
+
+    for (let i = 0; i < points.length; i++) {
+        const p = points[i];
+
+        p.px = p.x;
+        p.py = p.y;
+    }
+}
+
+/*
+ * Only remove a string when its entire length
+ * has travelled beyond the screen.
+ */
+function isOffscreen(s) {
+    const points = s.points;
+
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    for (let i = 0; i < points.length; i++) {
+        const p = points[i];
+
+        minX = Math.min(minX, p.x);
+        maxX = Math.max(maxX, p.x);
+
+        minY = Math.min(minY, p.y);
+        maxY = Math.max(maxY, p.y);
+    }
+
+    const margin = 40;
+
+    return (
+        maxX < -margin ||
+        minX > width + margin ||
+        maxY < -margin ||
+        minY > height + margin
+    );
+}
+
+/*
+ * Pointer interaction.
+ */
+function startDrawing(event) {
+    if (activePointer !== null) return;
+
+    event.preventDefault();
+
+    activePointer = event.pointerId;
+
+    try {
+        canvas.setPointerCapture(event.pointerId);
+    } catch (_) {}
+
+    currentString = createString(
+        event.clientX,
+        event.clientY
+    );
+
+    strings.push(currentString);
+}
+
+function moveDrawing(event) {
+    if (event.pointerId !== activePointer) return;
+    if (!currentString) return;
+
+    event.preventDefault();
+
+    addPoint(
+        currentString,
+        event.clientX,
+        event.clientY
+    );
+}
+
+function finishDrawing(event) {
+    if (activePointer === null) return;
+
+    if (
+        event &&
+        event.pointerId !== undefined &&
+        event.pointerId !== activePointer
+    ) {
+        return;
+    }
+
+    if (currentString) {
+        releaseString(currentString);
+    }
+
+    currentString = null;
+    activePointer = null;
+}
+
+canvas.addEventListener("pointerdown", startDrawing, {
+    passive: false
+});
+
+canvas.addEventListener("pointermove", moveDrawing, {
+    passive: false
+});
+
+canvas.addEventListener("pointerup", finishDrawing);
+canvas.addEventListener("pointercancel", finishDrawing);
+canvas.addEventListener("lostpointercapture", finishDrawing);
+
+/*
+ * Main animation loop.
+ */
+function animate(now) {
+    const dt = Math.min(
+        (now - previousTime) / 1000,
+        0.033
+    );
+
+    previousTime = now;
+    elapsed += dt;
+
+    ctx.fillStyle = "#101014";
+    ctx.fillRect(0, 0, width, height);
+
+    for (let i = strings.length - 1; i >= 0; i--) {
+        const s = strings[i];
+
+        updateString(s, dt);
+        drawString(s);
+
+        if (s.released && isOffscreen(s)) {
+            strings.splice(i, 1);
+        }
+    }
+
+    /*
+     * Keep a reasonable memory and rendering limit.
+     */
+    while (strings.length > SETTINGS.maxStrings) {
+        const index = strings.findIndex(s => s.released);
+
+        if (index === -1) break;
+
+        strings.splice(index, 1);
+    }
+
+    requestAnimationFrame(animate);
+}
+
+requestAnimationFrame(animate);
 
 })();
 </script>
